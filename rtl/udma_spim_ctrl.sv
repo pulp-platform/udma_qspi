@@ -435,7 +435,12 @@ module udma_spim_ctrl
                 begin
                     udma_tx_data_ready_o = 1'b1;
                     if(is_cmd_cfg)
+                    begin
                         s_update_cfg = 1'b1;
+                        s_cnt_start  = 1'b1;
+                        s_cnt_target = 8'h1;
+                        state_next   = WAIT_CYCLE;
+                    end
                     else if (is_cmd_sot)
                     begin
                         if (r_rpt_cfg)
