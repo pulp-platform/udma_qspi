@@ -164,21 +164,31 @@ module udma_spim_ctrl
 
     logic  [7:0] s_wait_cycle;
 
-    assign s_cmd          = s_is_replay ? s_replay_buffer_out[31:28] : udma_tx_data_i[31:28];
-    assign s_cfg_cpol     = s_is_replay ? s_replay_buffer_out[9]     : udma_tx_data_i[9];
-    assign s_cfg_cpha     = s_is_replay ? s_replay_buffer_out[8]     : udma_tx_data_i[8];
-    assign s_cfg_clkdiv   = s_is_replay ? s_replay_buffer_out[7:0]   : udma_tx_data_i[7:0];
-    assign s_cfg_cs       = s_is_replay ? s_replay_buffer_out[1:0]   : udma_tx_data_i[1:0];
-    assign s_size         = s_is_replay ? s_replay_buffer_out[20:16] : udma_tx_data_i[20:16];
-    assign s_size_long    = s_is_replay ? s_replay_buffer_out[15:0]  : udma_tx_data_i[15:0];
-    assign s_cfg_qpi      = s_is_replay ? s_replay_buffer_out[27]    : udma_tx_data_i[27];
-    assign s_cfg_custom   = s_is_replay ? s_replay_buffer_out[26]    : udma_tx_data_i[26];
-    assign s_cmd_data     = s_is_replay ? s_replay_buffer_out[15:0]  : udma_tx_data_i[15:0];
-    assign s_gen_eot      = s_is_replay ? s_replay_buffer_out[0]     : udma_tx_data_i[0];
-    assign s_cfg_check    = s_is_replay ? s_replay_buffer_out[15:0]  : udma_tx_data_i[15:0];
-    assign s_cfg_chk_type = s_is_replay ? s_replay_buffer_out[25:24] : udma_tx_data_i[25:24];
-    assign s_evt_sel      = s_is_replay ? s_replay_buffer_out[1:0]   : udma_tx_data_i[1:0];
-    assign s_wait_cycle   = s_is_replay ? s_replay_buffer_out[7:0]   : udma_tx_data_i[7:0];
+    logic [31:0] s_replay_buffer_out;
+    logic        s_replay_buffer_out_ready;
+    logic        s_replay_buffer_out_valid;
+    logic [31:0] s_replay_buffer_in;
+    logic        s_replay_buffer_in_ready;
+    logic        s_replay_buffer_in_valid;
+    logic        s_update_rpt;
+    logic        r_is_replay;
+    logic        s_clr_rpt_buf;
+
+    assign s_cmd          = r_is_replay ? s_replay_buffer_out[31:28] : udma_tx_data_i[31:28];
+    assign s_cfg_cpol     = r_is_replay ? s_replay_buffer_out[9]     : udma_tx_data_i[9];
+    assign s_cfg_cpha     = r_is_replay ? s_replay_buffer_out[8]     : udma_tx_data_i[8];
+    assign s_cfg_clkdiv   = r_is_replay ? s_replay_buffer_out[7:0]   : udma_tx_data_i[7:0];
+    assign s_cfg_cs       = r_is_replay ? s_replay_buffer_out[1:0]   : udma_tx_data_i[1:0];
+    assign s_size         = r_is_replay ? s_replay_buffer_out[20:16] : udma_tx_data_i[20:16];
+    assign s_size_long    = r_is_replay ? s_replay_buffer_out[15:0]  : udma_tx_data_i[15:0];
+    assign s_cfg_qpi      = r_is_replay ? s_replay_buffer_out[27]    : udma_tx_data_i[27];
+    assign s_cfg_custom   = r_is_replay ? s_replay_buffer_out[26]    : udma_tx_data_i[26];
+    assign s_cmd_data     = r_is_replay ? s_replay_buffer_out[15:0]  : udma_tx_data_i[15:0];
+    assign s_gen_eot      = r_is_replay ? s_replay_buffer_out[0]     : udma_tx_data_i[0];
+    assign s_cfg_check    = r_is_replay ? s_replay_buffer_out[15:0]  : udma_tx_data_i[15:0];
+    assign s_cfg_chk_type = r_is_replay ? s_replay_buffer_out[25:24] : udma_tx_data_i[25:24];
+    assign s_evt_sel      = r_is_replay ? s_replay_buffer_out[1:0]   : udma_tx_data_i[1:0];
+    assign s_wait_cycle   = r_is_replay ? s_replay_buffer_out[7:0]   : udma_tx_data_i[7:0];
 
     assign cfg_cpol_o = r_cfg_cpol;
     assign cfg_cpha_o = r_cfg_cpha;
@@ -201,7 +211,6 @@ module udma_spim_ctrl
   logic            s_cnt_done;
   logic            s_cnt_start;
   logic            s_cnt_update;
-  logic            s_cnt_clr;
   logic      [7:0] s_cnt_target; 
   logic      [7:0] r_cnt_target; 
   logic      [7:0] r_cnt; 
@@ -224,8 +233,8 @@ module udma_spim_ctrl
         .ready_o   ( s_replay_buffer_in_ready  )
     );
 
-    assign s_replay_buffer_in       = s_is_replay ? s_replay_buffer_out : udma_tx_data_i;
-    assign s_replay_buffer_in_valid = s_setup_replay ? udma_tx_data_valid_i : (s_replay_buffer_out_ready & s_replay_buffer_out_valid);
+    assign s_replay_buffer_in       = r_is_replay ? s_replay_buffer_out : udma_tx_data_i;
+    assign s_replay_buffer_in_valid = s_setup_replay ? udma_tx_data_valid_i : (r_is_replay & (s_replay_buffer_out_ready & s_replay_buffer_out_valid));
 
   always_ff @(posedge clk_i, negedge rstn_i)
   begin
@@ -358,19 +367,17 @@ module udma_spim_ctrl
         eot_o                = 1'b0;
         s_is_dummy           = r_is_dummy;
         s_qpi                = r_qpi;
-
         s_is_ful             = r_is_ful;
         s_update_chk_result  = 1'b0;
         s_chk_result         = 1'b0;
-
         s_is_replay          = r_is_replay;
         s_setup_replay       = 1'b0;
         s_rpt_num            = r_rpt_num;
         s_update_rpt         = 1'b0;
         s_clr_rpt_buf        = 1'b0;
-
         s_cnt_start          = 1'b0;
         s_cnt_target         =  'h0;
+        s_replay_buffer_out_ready = 1'b0;
 
         case(state)
             IDLE:
@@ -385,7 +392,6 @@ module udma_spim_ctrl
                         s_replay_buffer_out_ready = 1'b1;
                         if(r_rpt_num == 0)
                         begin
-                            s_update_rpt = 1'b1;
                             s_is_replay  = 1'b0;
                         end
                         else
@@ -395,10 +401,12 @@ module udma_spim_ctrl
                         end
                     end
                     if(is_cmd_cfg)
+                    begin
                         s_update_cfg = 1'b1;
                         s_cnt_start  = 1'b1;
                         s_cnt_target = 8'h1;
                         state_next   = WAIT_CYCLE;
+                    end
                     else if (is_cmd_sot)
                     begin
                         s_update_cs = 1'b1;
@@ -499,12 +507,6 @@ module udma_spim_ctrl
                         s_rpt_num    = s_size_long;
                         state_next   = DO_REPEAT;
                     end
-                    else if(is_cmd_rpe)
-                    begin
-                        s_update_rpt = 1'b1;
-                        s_is_replay  = 1'b1;
-                        state_next   = IDLE;
-                    end
                     else if(is_cmd_eot)
                     begin
                         eot_o      = s_gen_eot;
@@ -520,7 +522,6 @@ module udma_spim_ctrl
                     if(is_cmd_rpe)
                     begin
                         s_setup_replay = 1'b0;
-                        s_update_rpt = 1'b1;
                         s_is_replay  = 1'b1;
                         state_next     = IDLE;
                     end
@@ -661,6 +662,7 @@ module udma_spim_ctrl
             r_rx_done   <= 1'b0;
             r_chk_type  <= 0;
             r_chk       <= 0;
+            r_is_replay <= 0;
         end
         else
         begin
@@ -668,6 +670,7 @@ module udma_spim_ctrl
             r_is_ful  <= s_is_ful;
             r_tx_done <= tx_done_i;
             r_rx_done <= rx_done_i;
+            r_is_replay <= s_is_replay;
 
             if(s_update_chk)
             begin
@@ -689,7 +692,8 @@ module udma_spim_ctrl
         if(~rstn_i) begin
             r_rpt_num       <= 0;
         end else begin
-            r_rpt_num      <= s_rpt_num;
+            if(s_update_rpt)
+                r_rpt_num      <= s_rpt_num;
         end
     end
 

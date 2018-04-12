@@ -271,7 +271,7 @@ module udma_spim_top
 
         .eot_o(s_spi_eot),
 
-        .event_i(spi_event_i),
+        .event_i(s_events),
 
         .cfg_cpol_o(s_cfg_cpol),
         .cfg_cpha_o(s_cfg_cpha),
