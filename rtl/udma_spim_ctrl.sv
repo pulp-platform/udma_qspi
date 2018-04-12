@@ -211,10 +211,10 @@ module udma_spim_ctrl
   logic            s_cnt_done;
   logic            s_cnt_start;
   logic            s_cnt_update;
-  logic      [7:0] s_cnt_target; 
-  logic      [7:0] r_cnt_target; 
-  logic      [7:0] r_cnt; 
-  logic      [7:0] s_cnt_next; 
+  logic      [7:0] s_cnt_target;
+  logic      [7:0] r_cnt_target;
+  logic      [7:0] r_cnt;
+  logic      [7:0] s_cnt_next;
 
     io_generic_fifo
     #(
@@ -238,7 +238,7 @@ module udma_spim_ctrl
 
   always_ff @(posedge clk_i, negedge rstn_i)
   begin
-    if(~rstn_i) 
+    if(~rstn_i)
     begin
       r_cnt_state <= S_CNT_IDLE;
       r_cnt <= 'h0;
@@ -515,7 +515,7 @@ module udma_spim_ctrl
                         state_next = CLEAR_CS;
                     end
                 end
-            end 
+            end
             DO_REPEAT:
             begin
                 if(udma_tx_data_valid_i)
@@ -545,7 +545,7 @@ module udma_spim_ctrl
                 udma_rx_data_o       = rx_data_i;
                 udma_rx_data_valid_o = r_is_dummy ? 1'b0 : rx_data_valid_i;
                 rx_data_ready_o      = udma_rx_data_ready_i;
-            end            
+            end
             WAIT_CHECK:
             begin
                 if(rx_done_i)
@@ -571,6 +571,11 @@ module udma_spim_ctrl
                         2'b10:  //check only zeros
                         begin
                             if ( (~rx_data_i[15:0] & ~r_chk) == ~r_chk )
+                                s_chk_result = 1'b1;
+                        end
+                        2'b11:  //check if data is not mask
+                        begin
+                            if ( (rx_data_i[15:0] & r_chk) != r_chk)
                                 s_chk_result = 1'b1;
                         end
                         default:
@@ -680,7 +685,7 @@ module udma_spim_ctrl
                 r_chk        <= s_cfg_check;
             end
 
-            if(s_update_qpi) 
+            if(s_update_qpi)
                 r_qpi <= s_qpi;
 
             if(s_update_evt)
