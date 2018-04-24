@@ -1,8 +1,5 @@
 // Copyright 2016 ETH Zurich and University of Bologna.
 // Copyright and related rights are licensed under the Solderpad Hardware
-// License, Version 0.51 (the "License"); you may not use this file except in
-// compliance with the License.  You may obtain a copy of the License at
-// http://solderpad.org/licenses/SHL-0.51. Unless required by applicable law
 // or agreed to in writing, software, hardware and materials distributed under
 // this License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
@@ -21,26 +18,7 @@
 // Description:    SPI Master with full QPI support                           //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
-
-`define SPI_STD     2'b00
-`define SPI_QUAD_TX 2'b01
-`define SPI_QUAD_RX 2'b10
-
-`define SPI_CMD_CFG       4'b0000
-`define SPI_CMD_SOT       4'b0001
-`define SPI_CMD_SEND_CMD  4'b0010
-`define SPI_CMD_SEND_ADDR 4'b0011
-`define SPI_CMD_DUMMY     4'b0100
-`define SPI_CMD_WAIT      4'b0101
-`define SPI_CMD_TX_DATA   4'b0110
-`define SPI_CMD_RX_DATA   4'b0111
-`define SPI_CMD_RPT       4'b1000
-`define SPI_CMD_EOT       4'b1001
-`define SPI_CMD_RPT_END   4'b1010
-`define SPI_CMD_RX_CHECK  4'b1011
-`define SPI_CMD_FULL_DUPL 4'b1100
-`define SPI_CMD_WAIT_CYC  4'b1101
-
+`include "udma_spim_defines.sv"
 
 module udma_spim_ctrl
 #(
@@ -78,9 +56,14 @@ module udma_spim_ctrl
     input  logic                          rx_data_valid_i,
     output logic                          rx_data_ready_o,
 
+    input  logic  [31:0]                  udma_cmd_i,
+    input  logic                          udma_cmd_valid_i,
+    output logic                          udma_cmd_ready_o,
+
     input  logic  [31:0]                  udma_tx_data_i,
     input  logic                          udma_tx_data_valid_i,
     output logic                          udma_tx_data_ready_o,
+
     output logic  [31:0]                  udma_rx_data_o,
     output logic                          udma_rx_data_valid_o,
     input  logic                          udma_rx_data_ready_i,
@@ -91,13 +74,10 @@ module udma_spim_ctrl
     output logic                          spi_csn3_o
 );
 
-    enum logic [2:0] {IDLE,WAIT_DONE,WAIT_CHECK,WAIT_EVENT,DO_REPEAT,WAIT_CYCLE,CLEAR_CS} state,state_next;
+    enum logic [2:0] {IDLE,WAIT_DONE,WAIT_CHECK,WAIT_EVENT,DO_REPEAT,WAIT_CYCLE,CLEAR_CS,WAIT_ADDR} state,state_next;
 
-    logic s_cfg_cpol;
-    logic s_cfg_cpha;
     logic r_cfg_cpol;
     logic r_cfg_cpha;
-    logic [7:0] s_cfg_clkdiv;
     logic [7:0] r_cfg_clkdiv;
     logic s_update_cfg;
     logic r_update_cfg;
@@ -109,39 +89,49 @@ module udma_spim_ctrl
 
     logic s_event;
 
-    logic [1:0] s_evt_sel;
     logic [1:0] r_evt_sel;
 
-    logic is_cmd_cfg;
-    logic is_cmd_sot;
-    logic is_cmd_snc;
-    logic is_cmd_sna;
-    logic is_cmd_dum;
-    logic is_cmd_wai;
-    logic is_cmd_txd;
-    logic is_cmd_rxd;
-    logic is_cmd_rxc;
-    logic is_cmd_rpt;
-    logic is_cmd_rpe;
-    logic is_cmd_eot;
-    logic is_cmd_ful;
-    logic is_cmd_wcy;
-
+    //command decode signals
     logic  [3:0] s_cmd;
+    logic        is_cmd_cfg;
+    logic        is_cmd_sot;
+    logic        is_cmd_snc;
+    logic        is_cmd_dum;
+    logic        is_cmd_wai;
+    logic        is_cmd_txd;
+    logic        is_cmd_rxd;
+    logic        is_cmd_rxc;
+    logic        is_cmd_rpt;
+    logic        is_cmd_rpe;
+    logic        is_cmd_eot;
+    logic        is_cmd_ful;
+    logic        is_cmd_wcy;
+    logic        is_cmd_uca;
+    logic        is_cmd_ucs;
+
+    //command parameters decode signals
+    logic        s_cd_cfg_cpol;
+    logic        s_cd_cfg_cpha;
+    logic  [7:0] s_cd_cfg_clkdiv;
+    logic        s_cd_cfg_custom;
+    logic        s_cd_cfg_qpi;
+    logic  [1:0] s_cd_cs;
+    logic [15:0] s_cd_cfg_check;
+    logic [15:0] s_cd_size_long;
+    logic [15:0] s_cd_cmd_data;
+    logic  [4:0] s_cd_size;
+    logic        s_cd_gen_eot;
+    logic  [1:0] s_cd_cfg_chk_type;
+    logic  [7:0] s_cd_cs_wait;
+    logic  [1:0] s_cd_wait_typ;
+    logic  [1:0] s_cd_wait_evt;
+    logic  [7:0] s_cd_wait_cyc;
+
     logic  [1:0] s_cs;
-    logic        s_cfg_custom;
-    logic        s_cfg_qpi;
-    logic  [1:0] s_cfg_cs;
-    logic [15:0] s_cfg_check;
-    logic [15:0] s_size_long;
-    logic [15:0] s_cmd_data;
-    logic  [4:0] s_size;
-    logic        s_gen_eot;
     logic        s_qpi;
     logic        r_qpi;
     logic [15:0] r_chk;
     logic  [1:0] r_chk_type;
-    logic  [1:0] s_cfg_chk_type;
     logic        s_is_dummy;
     logic        r_is_dummy;
 
@@ -162,7 +152,6 @@ module udma_spim_ctrl
     logic        s_chk_result;
     logic        r_chk_result;
 
-    logic  [7:0] s_wait_cycle;
 
     logic [31:0] s_replay_buffer_out;
     logic        s_replay_buffer_out_ready;
@@ -174,21 +163,24 @@ module udma_spim_ctrl
     logic        r_is_replay;
     logic        s_clr_rpt_buf;
 
-    assign s_cmd          = r_is_replay ? s_replay_buffer_out[31:28] : udma_tx_data_i[31:28];
-    assign s_cfg_cpol     = r_is_replay ? s_replay_buffer_out[9]     : udma_tx_data_i[9];
-    assign s_cfg_cpha     = r_is_replay ? s_replay_buffer_out[8]     : udma_tx_data_i[8];
-    assign s_cfg_clkdiv   = r_is_replay ? s_replay_buffer_out[7:0]   : udma_tx_data_i[7:0];
-    assign s_cfg_cs       = r_is_replay ? s_replay_buffer_out[1:0]   : udma_tx_data_i[1:0];
-    assign s_size         = r_is_replay ? s_replay_buffer_out[20:16] : udma_tx_data_i[20:16];
-    assign s_size_long    = r_is_replay ? s_replay_buffer_out[15:0]  : udma_tx_data_i[15:0];
-    assign s_cfg_qpi      = r_is_replay ? s_replay_buffer_out[27]    : udma_tx_data_i[27];
-    assign s_cfg_custom   = r_is_replay ? s_replay_buffer_out[26]    : udma_tx_data_i[26];
-    assign s_cmd_data     = r_is_replay ? s_replay_buffer_out[15:0]  : udma_tx_data_i[15:0];
-    assign s_gen_eot      = r_is_replay ? s_replay_buffer_out[0]     : udma_tx_data_i[0];
-    assign s_cfg_check    = r_is_replay ? s_replay_buffer_out[15:0]  : udma_tx_data_i[15:0];
-    assign s_cfg_chk_type = r_is_replay ? s_replay_buffer_out[25:24] : udma_tx_data_i[25:24];
-    assign s_evt_sel      = r_is_replay ? s_replay_buffer_out[1:0]   : udma_tx_data_i[1:0];
-    assign s_wait_cycle   = r_is_replay ? s_replay_buffer_out[7:0]   : udma_tx_data_i[7:0];
+    assign s_cmd             = r_is_replay ? s_replay_buffer_out[31:28] : udma_cmd_i[31:28];
+    assign s_cd_cfg_cpol     = r_is_replay ? s_replay_buffer_out[9]     : udma_cmd_i[9];
+    assign s_cd_cfg_cpha     = r_is_replay ? s_replay_buffer_out[8]     : udma_cmd_i[8];
+    assign s_cd_cfg_clkdiv   = r_is_replay ? s_replay_buffer_out[7:0]   : udma_cmd_i[7:0];
+    assign s_cd_cs           = r_is_replay ? s_replay_buffer_out[1:0]   : udma_cmd_i[1:0];
+    assign s_cd_cs_wait      = r_is_replay ? s_replay_buffer_out[15:8]  : udma_cmd_i[15:8];
+    assign s_cd_size         = r_is_replay ? s_replay_buffer_out[20:16] : udma_cmd_i[20:16];
+    assign s_cd_size_long    = r_is_replay ? s_replay_buffer_out[15:0]  : udma_cmd_i[15:0];
+    assign s_cd_cfg_qpi      = r_is_replay ? s_replay_buffer_out[27]    : udma_cmd_i[27];
+    assign s_cd_cfg_custom   = r_is_replay ? s_replay_buffer_out[26]    : udma_cmd_i[26];
+    assign s_cd_cmd_data     = r_is_replay ? s_replay_buffer_out[15:0]  : udma_cmd_i[15:0];
+    assign s_cd_gen_eot      = r_is_replay ? s_replay_buffer_out[0]     : udma_cmd_i[0];
+    assign s_cd_cfg_check    = r_is_replay ? s_replay_buffer_out[15:0]  : udma_cmd_i[15:0];
+    assign s_cd_cfg_chk_type = r_is_replay ? s_replay_buffer_out[25:24] : udma_cmd_i[25:24];
+    assign s_cd_wait_evt     = r_is_replay ? s_replay_buffer_out[1:0]   : udma_cmd_i[1:0];
+    assign s_cd_wait_cyc     = r_is_replay ? s_replay_buffer_out[7:0]   : udma_cmd_i[7:0];
+    assign s_cd_wait_typ     = r_is_replay ? s_replay_buffer_out[9:8]   : udma_cmd_i[9:8];
+    assign s_cd_tx_cmd       = r_is_replay ? s_replay_buffer_out[23]    : udma_cmd_i[23];
 
     assign cfg_cpol_o = r_cfg_cpol;
     assign cfg_cpha_o = r_cfg_cpha;
@@ -233,8 +225,8 @@ module udma_spim_ctrl
         .ready_o   ( s_replay_buffer_in_ready  )
     );
 
-    assign s_replay_buffer_in       = r_is_replay ? s_replay_buffer_out : udma_tx_data_i;
-    assign s_replay_buffer_in_valid = s_setup_replay ? udma_tx_data_valid_i : (r_is_replay & (s_replay_buffer_out_ready & s_replay_buffer_out_valid));
+    assign s_replay_buffer_in       = r_is_replay ? s_replay_buffer_out : udma_cmd_i;
+    assign s_replay_buffer_in_valid = s_setup_replay ? udma_cmd_valid_i : (r_is_replay & (s_replay_buffer_out_ready & s_replay_buffer_out_valid));
 
   always_ff @(posedge clk_i, negedge rstn_i)
   begin
@@ -290,7 +282,6 @@ module udma_spim_ctrl
         is_cmd_cfg  = 1'b0;
         is_cmd_sot  = 1'b0;
         is_cmd_snc  = 1'b0;
-        is_cmd_sna  = 1'b0;
         is_cmd_dum  = 1'b0;
         is_cmd_wai  = 1'b0;
         is_cmd_txd  = 1'b0;
@@ -300,8 +291,8 @@ module udma_spim_ctrl
         is_cmd_eot  = 1'b0;
         is_cmd_rpe  = 1'b0;
         is_cmd_ful  = 1'b0;
-        is_cmd_wcy  = 1'b0;
-
+        is_cmd_uca  = 1'b0;
+        is_cmd_ucs  = 1'b0;
         case(s_cmd)
             `SPI_CMD_CFG:
                 is_cmd_cfg = 1'b1;
@@ -309,8 +300,6 @@ module udma_spim_ctrl
                 is_cmd_sot  = 1'b1;
             `SPI_CMD_SEND_CMD:
                 is_cmd_snc  = 1'b1;
-            `SPI_CMD_SEND_ADDR:
-                is_cmd_sna  = 1'b1;
             `SPI_CMD_DUMMY:
                 is_cmd_dum  = 1'b1;
             `SPI_CMD_WAIT:
@@ -329,8 +318,10 @@ module udma_spim_ctrl
                 is_cmd_eot  = 1'b1;
             `SPI_CMD_FULL_DUPL:
                 is_cmd_ful  = 1'b1;
-            `SPI_CMD_WAIT_CYC:
-                is_cmd_wcy  = 1'b1;
+            `SPI_CMD_SETUP_UCA:
+                is_cmd_uca  = 1'b1;
+            `SPI_CMD_SETUP_UCS:
+                is_cmd_ucs  = 1'b1;
         endcase
     end
 
@@ -345,6 +336,7 @@ module udma_spim_ctrl
     begin
         state_next           = state;
         udma_tx_data_ready_o = 1'b0;
+        udma_cmd_ready_o     = 1'b0;
         udma_rx_data_o       =  'h0;
         udma_rx_data_valid_o = 1'b0;
         rx_data_ready_o      = 1'b0;
@@ -383,10 +375,10 @@ module udma_spim_ctrl
             IDLE:
             begin
                 s_is_ful = 1'b0;
-                if((r_is_replay && s_replay_buffer_out_valid) || (!r_is_replay && udma_tx_data_valid_i))
+                if((r_is_replay && s_replay_buffer_out_valid) || (!r_is_replay && udma_cmd_valid_i))
                 begin
                     if(!s_is_replay)
-                        udma_tx_data_ready_o = 1'b1;
+                        udma_cmd_ready_o = 1'b1;
                     else
                     begin
                         s_replay_buffer_out_ready = 1'b1;
@@ -411,120 +403,116 @@ module udma_spim_ctrl
                     end
                     else if (is_cmd_sot)
                     begin
-                        s_update_cs = 1'b1;
+                        s_update_cs  = 1'b1;
+                        s_cnt_start  = 1'b1;
+                        s_cnt_target = s_cd_wait_cyc;
+                        state_next   = WAIT_CYCLE;
                     end
                     else if(is_cmd_snc)
                     begin
                         s_update_qpi    = 1'b1;
                         tx_start_o      = 1'b1;
                         tx_customsize_o = 1'b1;
-                        tx_qpi_o        = s_cfg_qpi;
-                        s_qpi           = s_cfg_qpi;
-                        tx_size_o       = {11'h0,s_size};
+                        tx_qpi_o        = s_cd_cfg_qpi;
+                        s_qpi           = s_cd_cfg_qpi;
+                        tx_size_o       = {11'h0,s_cd_size};
                         state_next      = WAIT_DONE;
                         tx_data_valid_o = 1'b1;
-                        tx_data_o       = {s_cmd_data,16'h0};
+                        tx_data_o       = {s_cd_cmd_data,16'h0};
                     end
                     else if(is_cmd_wai)
                     begin
-                        s_update_evt      = 1'b1;
-                        state_next   = WAIT_EVENT;
-                    end
-                    else if(is_cmd_wcy)
-                    begin
-                        s_cnt_start  = 1'b1;
-                        s_cnt_target = s_wait_cycle;
-                        state_next   = WAIT_CYCLE;
-                    end
-                    else if(is_cmd_sna)
-                    begin
-                            s_update_qpi = 1'b1;
-                            tx_start_o   = 1'b1;
-                            tx_customsize_o = 1'b1;
-                            tx_qpi_o     = s_cfg_qpi;
-                            s_qpi        = s_cfg_qpi;
-                            tx_size_o    = {11'h0,s_size};
-                            state_next   = WAIT_DONE;
+                        if (s_cd_wait_typ == `SPI_WAIT_EVT)
+                        begin
+                            s_update_evt      = 1'b1;
+                            state_next   = WAIT_EVENT;
+                        end
+                        else if(s_cd_wait_typ == `SPI_WAIT_CYC)
+                        begin
+                            s_cnt_start  = 1'b1;
+                            s_cnt_target = s_cd_wait_cyc;
+                            state_next   = WAIT_CYCLE;
+                        end
                     end
                     else if(is_cmd_dum)
                     begin
-                            s_update_qpi = 1'b1;
-                            rx_start_o   = 1'b1;
-                            rx_customsize_o = 1'b0;
-                            rx_qpi_o     = s_cfg_qpi;
-                            s_qpi        = s_cfg_qpi;
-                            rx_size_o    = {11'h0,s_size};
-                            state_next   = WAIT_DONE;
-                            s_is_dummy   = 1'b1;
+                        s_update_qpi = 1'b1;
+                        rx_start_o   = 1'b1;
+                        rx_customsize_o = 1'b0;
+                        rx_qpi_o     = s_cd_cfg_qpi;
+                        s_qpi        = s_cd_cfg_qpi;
+                        rx_size_o    = {11'h0,s_cd_size};
+                        state_next   = WAIT_DONE;
+                        s_is_dummy   = 1'b1;
                     end
                     else if(is_cmd_txd)
                     begin
-                            s_update_qpi = 1'b1;
-                            tx_start_o   = 1'b1;
-                            tx_customsize_o = s_cfg_custom;
-                            tx_qpi_o     = s_cfg_qpi;
-                            s_qpi        = s_cfg_qpi;
-                            tx_size_o    = s_size_long;
-                            state_next   = WAIT_DONE;
+                        s_update_qpi    = 1'b1;
+                        tx_start_o      = 1'b1;
+                        tx_customsize_o = s_cd_cfg_custom;
+                        tx_qpi_o        = s_cd_cfg_qpi;
+                        s_qpi           = s_cd_cfg_qpi;
+                        tx_size_o       = s_cd_size_long;
+                        state_next      = WAIT_DONE;
                     end
                     else if(is_cmd_rxd)
                     begin
-                            s_update_qpi = 1'b1;
-                            rx_start_o   = 1'b1;
-                            rx_customsize_o = s_cfg_custom;
-                            rx_qpi_o     = s_cfg_qpi;
-                            s_qpi        = s_cfg_qpi;
-                            rx_size_o    = s_size_long;
-                            state_next   = WAIT_DONE;
+                        s_update_qpi = 1'b1;
+                        rx_start_o   = 1'b1;
+                        rx_customsize_o = s_cd_cfg_custom;
+                        rx_qpi_o     = s_cd_cfg_qpi;
+                        s_qpi        = s_cd_cfg_qpi;
+                        rx_size_o    = s_cd_size_long;
+                        state_next   = WAIT_DONE;
                     end
                     else if(is_cmd_ful)
                     begin
-                            s_is_ful     = 1'b1;
-                            s_update_qpi = 1'b1;
-                            rx_start_o   = 1'b1;
-                            s_qpi        = 1'b0;
-                            rx_qpi_o     = 1'b0;
-                            rx_size_o    = s_size_long;
-                            tx_start_o   = 1'b1;
-                            tx_customsize_o = s_cfg_custom;
-                            tx_qpi_o     = 1'b0;
-                            tx_size_o    = s_size_long;
-                            state_next   = WAIT_DONE;
+                        s_is_ful     = 1'b1;
+                        s_update_qpi = 1'b1;
+                        rx_start_o   = 1'b1;
+                        s_qpi        = 1'b0;
+                        rx_qpi_o     = 1'b0;
+                        rx_size_o    = s_cd_size_long;
+                        tx_start_o   = 1'b1;
+                        tx_customsize_o = s_cd_cfg_custom;
+                        tx_qpi_o     = 1'b0;
+                        tx_size_o    = s_cd_size_long;
+                        state_next   = WAIT_DONE;
                     end
                     else if(is_cmd_rxc)
                     begin
-                            s_update_qpi = 1'b1;
-                            s_update_chk = 1'b1;
-                            rx_start_o   = 1'b1;
-                            rx_customsize_o = s_cfg_custom;
-                            rx_qpi_o     = s_cfg_qpi;
-                            s_qpi        = s_cfg_qpi;
-                            rx_size_o    = {12'h0,s_size[3:0]};
-                            state_next   = WAIT_CHECK;
+                        s_update_qpi = 1'b1;
+                        s_update_chk = 1'b1;
+                        rx_start_o   = 1'b1;
+                        rx_customsize_o = s_cd_cfg_custom;
+                        rx_qpi_o     = s_cd_cfg_qpi;
+                        s_qpi        = s_cd_cfg_qpi;
+                        rx_size_o    = {12'h0,s_cd_size[3:0]};
+                        state_next   = WAIT_CHECK;
                     end
                     else if(is_cmd_rpt)
                     begin
                         s_update_rpt = 1'b1;
                         s_clr_rpt_buf = 1'b1;
-                        s_rpt_num    = s_size_long;
+                        s_rpt_num    = s_cd_size_long;
                         state_next   = DO_REPEAT;
                     end
                     else if(is_cmd_eot)
                     begin
-                        eot_o      = s_gen_eot;
+                        eot_o      = s_cd_gen_eot;
                         state_next = CLEAR_CS;
                     end
                 end
             end
             DO_REPEAT:
             begin
-                if(udma_tx_data_valid_i)
+                if(udma_cmd_valid_i)
                 begin
-                    udma_tx_data_ready_o = 1'b1;
+                    udma_cmd_ready_o = 1'b1;
                     if(is_cmd_rpe)
                     begin
                         s_setup_replay = 1'b0;
-                        s_is_replay  = 1'b1;
+                        s_is_replay    = 1'b1;
                         state_next     = IDLE;
                     end
                     else
@@ -538,13 +526,22 @@ module udma_spim_ctrl
                     state_next = IDLE;
                     s_is_dummy = 1'b0;
                 end
-                tx_data_o            = udma_tx_data_i;
-                tx_data_valid_o      = udma_tx_data_valid_i;
+
+                tx_data_o        = udma_tx_data_i;
+                tx_data_valid_o  = udma_tx_data_valid_i;
                 udma_tx_data_ready_o = tx_data_ready_i;
 
                 udma_rx_data_o       = rx_data_i;
                 udma_rx_data_valid_o = r_is_dummy ? 1'b0 : rx_data_valid_i;
                 rx_data_ready_o      = udma_rx_data_ready_i;
+            end
+            WAIT_ADDR:
+            begin
+                if(udma_cmd_valid_i)
+                begin
+                    udma_cmd_ready_o = 1'b0;
+                    state_next       = IDLE;
+                end
             end
             WAIT_CHECK:
             begin
@@ -641,9 +638,9 @@ module udma_spim_ctrl
         else
         begin
             if(s_update_cfg) begin
-                r_cfg_cpol   <= s_cfg_cpol;
-                r_cfg_cpha   <= s_cfg_cpha;
-                r_cfg_clkdiv <= s_cfg_clkdiv;
+                r_cfg_cpol   <= s_cd_cfg_cpol;
+                r_cfg_cpha   <= s_cd_cfg_cpha;
+                r_cfg_clkdiv <= s_cd_cfg_clkdiv;
             end
         end
 
@@ -681,15 +678,15 @@ module udma_spim_ctrl
 
             if(s_update_chk)
             begin
-                r_chk_type   <= s_cfg_chk_type;
-                r_chk        <= s_cfg_check;
+                r_chk_type   <= s_cd_cfg_chk_type;
+                r_chk        <= s_cd_cfg_check;
             end
 
             if(s_update_qpi)
                 r_qpi <= s_qpi;
 
             if(s_update_evt)
-                r_evt_sel <= s_evt_sel;
+                r_evt_sel <= s_cd_wait_evt;
 
             r_is_dummy <= s_is_dummy;
         end
@@ -704,7 +701,7 @@ module udma_spim_ctrl
         end
     end
 
-    assign s_cs = s_cfg_cs;
+    assign s_cs = s_cd_cs;
 
     always_ff @(posedge clk_i, negedge rstn_i)
     begin

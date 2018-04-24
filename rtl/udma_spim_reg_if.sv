@@ -21,20 +21,8 @@
 // Description:    SPI Master with full QPI support                           //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
+`include "udma_spim_defines.sv"
 
-// SPI Master Registers
-`define REG_RX_SADDR     5'b00000 //BASEADDR+0x00 
-`define REG_RX_SIZE      5'b00001 //BASEADDR+0x04
-`define REG_RX_CFG       5'b00010 //BASEADDR+0x08  
-`define REG_RX_INTCFG    5'b00011 //BASEADDR+0x0C  
-
-`define REG_TX_SADDR     5'b00100 //BASEADDR+0x10
-`define REG_TX_SIZE      5'b00101 //BASEADDR+0x14
-`define REG_TX_CFG       5'b00110 //BASEADDR+0x18
-`define REG_TX_INTCFG    5'b00111 //BASEADDR+0x1C
-
-//+ `define REG_STATUS       4'b1000 //BASEADDR+0x20
-//+ `define REG_CLKDIV       4'b1001 //BASEADDR+0x24
 
 module udma_spim_reg_if #(
     parameter L2_AWIDTH_NOAL = 12,
@@ -49,6 +37,17 @@ module udma_spim_reg_if #(
 	input  logic                      cfg_rwn_i,
     output logic               [31:0] cfg_data_o,
 	output logic                      cfg_ready_o,
+
+    output logic [L2_AWIDTH_NOAL-1:0] cfg_cmd_startaddr_o,
+    output logic     [TRANS_SIZE-1:0] cfg_cmd_size_o,
+    output logic                [1:0] cfg_cmd_datasize_o,
+    output logic                      cfg_cmd_continuous_o,
+    output logic                      cfg_cmd_en_o,
+    output logic                      cfg_cmd_clr_o,
+    input  logic                      cfg_cmd_en_i,
+    input  logic                      cfg_cmd_pending_i,
+    input  logic [L2_AWIDTH_NOAL-1:0] cfg_cmd_curr_addr_i,
+    input  logic     [TRANS_SIZE-1:0] cfg_cmd_bytes_left_i,
 
     output logic [L2_AWIDTH_NOAL-1:0] cfg_rx_startaddr_o,
     output logic     [TRANS_SIZE-1:0] cfg_rx_size_o,
@@ -69,9 +68,20 @@ module udma_spim_reg_if #(
     input  logic                      cfg_tx_en_i,
     input  logic                      cfg_tx_pending_i,
     input  logic [L2_AWIDTH_NOAL-1:0] cfg_tx_curr_addr_i,
-    input  logic     [TRANS_SIZE-1:0] cfg_tx_bytes_left_i
+    input  logic     [TRANS_SIZE-1:0] cfg_tx_bytes_left_i,
+
+    input  logic               [31:0] udma_cmd_i,
+    input  logic                      udma_cmd_valid_i,
+    input  logic                      udma_cmd_ready_i
 
 );
+
+    logic [L2_AWIDTH_NOAL-1:0] r_cmd_startaddr;
+    logic   [TRANS_SIZE-1 : 0] r_cmd_size;
+    logic              [1 : 0] r_cmd_datasize;
+    logic                      r_cmd_continuous;
+    logic                      r_cmd_en;
+    logic                      r_cmd_clr;
 
     logic [L2_AWIDTH_NOAL-1:0] r_rx_startaddr;
     logic   [TRANS_SIZE-1 : 0] r_rx_size;
@@ -89,8 +99,41 @@ module udma_spim_reg_if #(
     logic                [4:0] s_wr_addr;
     logic                [4:0] s_rd_addr;
 
+    enum logic [1:0] { S_CNT_IDLE, S_CNT_RUNNING} r_cnt_state,s_cnt_state_next;
+
+    logic            s_cnt_done;
+    logic            s_cnt_start;
+    logic            s_cnt_update;
+    logic      [7:0] s_cnt_target;
+    logic      [7:0] r_cnt_target;
+    logic      [7:0] r_cnt;
+    logic      [7:0] s_cnt_next;
+
+    //command decode signals
+    logic                 [3:0] s_cmd;
+    logic  [L2_AWIDTH_NOAL-1:0] s_cmd_decode_addr;
+    logic    [TRANS_SIZE-1 : 0] s_cmd_decode_size;
+    logic                       s_cmd_decode_txrxn;
+    logic                       s_cmd_decode_ds;
+
+    assign s_cmd              = udma_cmd_i[31:28];
+    assign s_cmd_decode_txrxn = udma_cmd_i[27];
+    assign s_cmd_decode_ds    = udma_cmd_i[26:25];
+    assign s_cmd_decode_size  = udma_cmd_i[TRANS_SIZE-1:0];
+    assign s_cmd_decode_addr  = udma_cmd_i[L2_AWIDTH_NOAL-1:0];
+
+    assign is_cmd_uca = (s_cmd == `SPI_CMD_SETUP_UCA);
+    assign is_cmd_ucs = (s_cmd == `SPI_CMD_SETUP_UCS);
+
     assign s_wr_addr = (cfg_valid_i & ~cfg_rwn_i) ? cfg_addr_i : 5'h0;
     assign s_rd_addr = (cfg_valid_i &  cfg_rwn_i) ? cfg_addr_i : 5'h0;
+
+    assign cfg_cmd_startaddr_o  = r_cmd_startaddr;
+    assign cfg_cmd_size_o       = r_cmd_size;
+    assign cfg_cmd_datasize_o   = 2'b10;
+    assign cfg_cmd_continuous_o = r_cmd_continuous;
+    assign cfg_cmd_en_o         = r_cmd_en;
+    assign cfg_cmd_clr_o        = r_cmd_clr;
 
     assign cfg_rx_startaddr_o  = r_rx_startaddr;
     assign cfg_rx_size_o       = r_rx_size;
@@ -111,28 +154,70 @@ module udma_spim_reg_if #(
         if(~rstn_i) 
         begin
             // SPI REGS
+            r_cmd_startaddr  <=  'h0;
+            r_cmd_size       <=  'h0;
+            r_cmd_continuous <=  'h0;
+            r_cmd_en          =  'h0;
+            r_cmd_clr         =  'h0;
             r_rx_startaddr  <=  'h0;
             r_rx_size       <=  'h0;
             r_rx_continuous <=  'h0;
             r_rx_en          =  'h0;
             r_rx_clr         =  'h0;
+            r_rx_datasize   <= 2'b10;
             r_tx_startaddr  <=  'h0;
             r_tx_size       <=  'h0;
             r_tx_continuous <=  'h0;
             r_tx_en          =  'h0;
             r_tx_clr         =  'h0;
-            r_rx_datasize   <= 2'b10;
         end
         else
         begin
+            r_cmd_en         =  'h0;
+            r_cmd_clr        =  'h0;
             r_rx_en          =  'h0;
             r_rx_clr         =  'h0;
             r_tx_en          =  'h0;
             r_tx_clr         =  'h0;
 
-            if (cfg_valid_i & ~cfg_rwn_i)
+            if (udma_cmd_valid_i && udma_cmd_ready_i && (is_cmd_ucs || is_cmd_uca))
+            begin
+                if(is_cmd_uca)
+                begin
+                    if(s_cmd_decode_txrxn)
+                        r_tx_startaddr <= s_cmd_decode_addr;
+                    else
+                        r_rx_startaddr <= s_cmd_decode_addr;
+                end
+                else
+                begin
+                    if(s_cmd_decode_txrxn)
+                    begin
+                        r_tx_size <= s_cmd_decode_size;
+                        r_tx_en    = 1'b1;
+                    end
+                    else
+                    begin
+                        r_rx_size <= s_cmd_decode_size;
+                        r_rx_en    = 1'b1;
+                        r_rx_datasize <= s_cmd_decode_ds;
+                    end
+                end
+            end
+            else if (cfg_valid_i & ~cfg_rwn_i)
             begin
                 case (s_wr_addr)
+                `REG_CMD_SADDR:
+                    r_cmd_startaddr   <= cfg_data_i[L2_AWIDTH_NOAL-1:0];
+                `REG_CMD_SIZE:
+                    r_cmd_size        <= cfg_data_i[TRANS_SIZE-1:0];
+                `REG_CMD_CFG:
+                begin
+                    r_cmd_clr          = cfg_data_i[5];
+                    r_cmd_en           = cfg_data_i[4];
+                    r_cmd_datasize    <= cfg_data_i[2:1];
+                    r_cmd_continuous  <= cfg_data_i[0];
+                end
                 `REG_RX_SADDR:
                     r_rx_startaddr   <= cfg_data_i[L2_AWIDTH_NOAL-1:0];
                 `REG_RX_SIZE:
@@ -164,6 +249,12 @@ module udma_spim_reg_if #(
     begin
         cfg_data_o = 32'h0;
         case (s_rd_addr)
+        `REG_CMD_SADDR:
+            cfg_data_o = cfg_cmd_curr_addr_i;
+        `REG_CMD_SIZE:
+            cfg_data_o[TRANS_SIZE-1:0] = cfg_cmd_bytes_left_i;
+        `REG_CMD_CFG:
+            cfg_data_o = {26'h0,cfg_cmd_pending_i,cfg_cmd_en_i,1'b0,2'b10,r_cmd_continuous};
         `REG_RX_SADDR:
             cfg_data_o = cfg_rx_curr_addr_i;
         `REG_RX_SIZE:

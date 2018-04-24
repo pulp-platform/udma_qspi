@@ -49,6 +49,16 @@ module udma_spim_top
     output logic               [31:0] cfg_data_o,
     output logic                      cfg_ready_o,
 
+    output logic [L2_AWIDTH_NOAL-1:0] cfg_cmd_startaddr_o,
+    output logic     [TRANS_SIZE-1:0] cfg_cmd_size_o,
+    output logic                      cfg_cmd_continuous_o,
+    output logic                      cfg_cmd_en_o,
+    output logic                      cfg_cmd_clr_o,
+    input  logic                      cfg_cmd_en_i,
+    input  logic                      cfg_cmd_pending_i,
+    input  logic [L2_AWIDTH_NOAL-1:0] cfg_cmd_curr_addr_i,
+    input  logic     [TRANS_SIZE-1:0] cfg_cmd_bytes_left_i,
+
     output logic [L2_AWIDTH_NOAL-1:0] cfg_rx_startaddr_o,
     output logic     [TRANS_SIZE-1:0] cfg_rx_size_o,
     output logic                      cfg_rx_continuous_o,
@@ -69,6 +79,13 @@ module udma_spim_top
     input  logic [L2_AWIDTH_NOAL-1:0] cfg_tx_curr_addr_i,
     input  logic     [TRANS_SIZE-1:0] cfg_tx_bytes_left_i,
 
+    output logic                      cmd_req_o,
+    input  logic                      cmd_gnt_i,
+    output logic                [1:0] cmd_datasize_o,
+    input  logic               [31:0] cmd_i,
+    input  logic                      cmd_valid_i,
+    output logic                      cmd_ready_o,
+             
     output logic                      data_tx_req_o,
     input  logic                      data_tx_gnt_i,
     output logic                [1:0] data_tx_datasize_o,
@@ -127,6 +144,14 @@ module udma_spim_top
     logic        s_spi_data_tx_valid;
     logic        s_spi_data_tx_ready;
 
+    logic [31:0] s_udma_cmd;
+    logic        s_udma_cmd_valid;
+    logic        s_udma_cmd_ready;
+
+    logic [31:0] s_spi_cmd;
+    logic        s_spi_cmd_valid;
+    logic        s_spi_cmd_ready;
+
     logic [7:0] s_clkdiv_data;
     logic       s_clkdiv_valid;
     logic       s_clkdiv_ack;
@@ -145,6 +170,7 @@ module udma_spim_top
     assign s_clkdiv_en = 1'b1;
 
     assign data_tx_datasize_o = 2'b10;
+    assign cmd_datasize_o     = 2'b10;
 
     genvar i;
 
@@ -177,6 +203,17 @@ module udma_spim_top
         .cfg_ready_o        ( cfg_ready_o         ),
         .cfg_data_o         ( cfg_data_o          ),
 
+        .cfg_cmd_startaddr_o ( cfg_cmd_startaddr_o  ),
+        .cfg_cmd_size_o      ( cfg_cmd_size_o       ),
+        .cfg_cmd_datasize_o  ( cfg_cmd_datasize_o   ),
+        .cfg_cmd_continuous_o( cfg_cmd_continuous_o ),
+        .cfg_cmd_en_o        ( cfg_cmd_en_o         ),
+        .cfg_cmd_clr_o       ( cfg_cmd_clr_o        ),
+        .cfg_cmd_en_i        ( cfg_cmd_en_i         ),
+        .cfg_cmd_pending_i   ( cfg_cmd_pending_i    ),
+        .cfg_cmd_curr_addr_i ( cfg_cmd_curr_addr_i  ),
+        .cfg_cmd_bytes_left_i( cfg_cmd_bytes_left_i ),
+
         .cfg_rx_startaddr_o ( cfg_rx_startaddr_o  ),
         .cfg_rx_size_o      ( cfg_rx_size_o       ),
         .cfg_rx_datasize_o  ( data_rx_datasize_o  ),
@@ -196,7 +233,10 @@ module udma_spim_top
         .cfg_tx_en_i        ( cfg_tx_en_i         ),
         .cfg_tx_pending_i   ( cfg_tx_pending_i    ),
         .cfg_tx_curr_addr_i ( cfg_tx_curr_addr_i  ),
-        .cfg_tx_bytes_left_i( cfg_tx_bytes_left_i )
+        .cfg_tx_bytes_left_i( cfg_tx_bytes_left_i ),
+        .udma_cmd_i         ( s_spi_cmd           ),
+        .udma_cmd_valid_i   ( s_spi_cmd_valid     ),
+        .udma_cmd_ready_i   ( s_spi_cmd_ready     )
     );
     
     udma_clkgen u_clockgen
@@ -216,6 +256,39 @@ module udma_spim_top
         .clk_o           (  s_clk_spi      )
     );
 
+    //command TX FIFO
+    udma_dc_fifo #(32,BUFFER_WIDTH) u_dc_cmd
+    (
+        .dst_clk_i          ( s_clk_spi         ),   
+        .dst_rstn_i         ( rstn_i            ),  
+        .dst_data_o         ( s_udma_cmd        ),
+        .dst_valid_o        ( s_udma_cmd_valid  ),
+        .dst_ready_i        ( s_udma_cmd_ready  ),
+        .src_clk_i          ( sys_clk_i         ),
+        .src_rstn_i         ( rstn_i            ),
+        .src_data_i         ( s_spi_cmd         ),
+        .src_valid_i        ( s_spi_cmd_valid   ),
+        .src_ready_o        ( s_spi_cmd_ready   )
+    );
+
+    io_tx_fifo #(
+      .DATA_WIDTH(32),
+      .BUFFER_DEPTH(2)
+      ) u_cmd_fifo (
+        .clk_i   ( sys_clk_i        ),
+        .rstn_i  ( rstn_i           ),
+        .clr_i   ( 1'b0             ),
+        .data_o  ( s_spi_cmd        ),
+        .valid_o ( s_spi_cmd_valid  ),
+        .ready_i ( s_spi_cmd_ready  ),
+        .req_o   ( cmd_req_o        ),
+        .gnt_i   ( cmd_gnt_i        ),
+        .valid_i ( cmd_valid_i      ),
+        .data_i  ( cmd_i            ),
+        .ready_o ( cmd_ready_o      )
+        );
+
+    //data TX FIFO
     udma_dc_fifo #(32,BUFFER_WIDTH) u_dc_tx
     (
         .dst_clk_i          ( s_clk_spi            ),   
@@ -298,6 +371,9 @@ module udma_spim_top
         .rx_data_valid_i(s_rx_data_valid),
         .rx_data_ready_o(s_rx_data_ready),
 
+        .udma_cmd_i(s_udma_cmd),
+        .udma_cmd_valid_i(s_udma_cmd_valid),
+        .udma_cmd_ready_o(s_udma_cmd_ready),
         .udma_tx_data_i(s_udma_tx_data),
         .udma_tx_data_valid_i(s_udma_tx_data_valid),
         .udma_tx_data_ready_o(s_udma_tx_data_ready),
