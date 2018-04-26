@@ -114,7 +114,7 @@ module udma_spim_reg_if #(
     logic  [L2_AWIDTH_NOAL-1:0] s_cmd_decode_addr;
     logic    [TRANS_SIZE-1 : 0] s_cmd_decode_size;
     logic                       s_cmd_decode_txrxn;
-    logic                       s_cmd_decode_ds;
+    logic                 [1:0] s_cmd_decode_ds;
 
     assign s_cmd              = udma_cmd_i[31:28];
     assign s_cmd_decode_txrxn = udma_cmd_i[27];
