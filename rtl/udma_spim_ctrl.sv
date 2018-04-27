@@ -40,7 +40,9 @@ module udma_spim_ctrl
 
     output logic                          tx_start_o,
     output logic  [15:0]                  tx_size_o,
-    output logic                          tx_customsize_o,
+    output logic   [4:0]                  tx_bitsword_o,
+    output logic   [1:0]                  tx_wordtransf_o,
+    output logic                          tx_lsbfirst_o,
     output logic                          tx_qpi_o,
     input  logic                          tx_done_i,
     output logic  [31:0]                  tx_data_o,
@@ -49,7 +51,9 @@ module udma_spim_ctrl
 
     output logic                          rx_start_o,
     output logic  [15:0]                  rx_size_o,
-    output logic                          rx_customsize_o,
+    output logic   [4:0]                  rx_bitsword_o,
+    output logic   [1:0]                  rx_wordtransf_o,
+    output logic                          rx_lsbfirst_o,
     output logic                          rx_qpi_o,
     input  logic                          rx_done_i,
     input  logic  [31:0]                  rx_data_i,
@@ -113,7 +117,7 @@ module udma_spim_ctrl
     logic        s_cd_cfg_cpol;
     logic        s_cd_cfg_cpha;
     logic  [7:0] s_cd_cfg_clkdiv;
-    logic        s_cd_cfg_custom;
+    logic        s_cd_cfg_lsb;
     logic        s_cd_cfg_qpi;
     logic  [1:0] s_cd_cs;
     logic [15:0] s_cd_cfg_check;
@@ -163,16 +167,23 @@ module udma_spim_ctrl
     logic        r_is_replay;
     logic        s_clr_rpt_buf;
 
+    logic [1:0] s_wordstransf;
+    logic [1:0] s_cd_wordstransf;
+    logic [4:0] s_cd_wordsize;
+
     assign s_cmd             = r_is_replay ? s_replay_buffer_out[31:28] : udma_cmd_i[31:28];
     assign s_cd_cfg_cpol     = r_is_replay ? s_replay_buffer_out[9]     : udma_cmd_i[9];
     assign s_cd_cfg_cpha     = r_is_replay ? s_replay_buffer_out[8]     : udma_cmd_i[8];
     assign s_cd_cfg_clkdiv   = r_is_replay ? s_replay_buffer_out[7:0]   : udma_cmd_i[7:0];
     assign s_cd_cs           = r_is_replay ? s_replay_buffer_out[1:0]   : udma_cmd_i[1:0];
     assign s_cd_cs_wait      = r_is_replay ? s_replay_buffer_out[15:8]  : udma_cmd_i[15:8];
-    assign s_cd_size         = r_is_replay ? s_replay_buffer_out[20:16] : udma_cmd_i[20:16];
-    assign s_cd_size_long    = r_is_replay ? s_replay_buffer_out[15:0]  : udma_cmd_i[15:0];
+
     assign s_cd_cfg_qpi      = r_is_replay ? s_replay_buffer_out[27]    : udma_cmd_i[27];
-    assign s_cd_cfg_custom   = r_is_replay ? s_replay_buffer_out[26]    : udma_cmd_i[26];
+    assign s_cd_cfg_lsb      = r_is_replay ? s_replay_buffer_out[26]    : udma_cmd_i[26];
+    assign s_cd_wordstransf  = r_is_replay ? s_replay_buffer_out[22:21] : udma_cmd_i[22:21];
+    assign s_cd_wordsize     = r_is_replay ? s_replay_buffer_out[20:16] : udma_cmd_i[20:16];
+    assign s_cd_size_long    = r_is_replay ? s_replay_buffer_out[15:0]  : udma_cmd_i[15:0];
+
     assign s_cd_cmd_data     = r_is_replay ? s_replay_buffer_out[15:0]  : udma_cmd_i[15:0];
     assign s_cd_gen_eot      = r_is_replay ? s_replay_buffer_out[0]     : udma_cmd_i[0];
     assign s_cd_cfg_check    = r_is_replay ? s_replay_buffer_out[15:0]  : udma_cmd_i[15:0];
@@ -180,7 +191,6 @@ module udma_spim_ctrl
     assign s_cd_wait_evt     = r_is_replay ? s_replay_buffer_out[1:0]   : udma_cmd_i[1:0];
     assign s_cd_wait_cyc     = r_is_replay ? s_replay_buffer_out[7:0]   : udma_cmd_i[7:0];
     assign s_cd_wait_typ     = r_is_replay ? s_replay_buffer_out[9:8]   : udma_cmd_i[9:8];
-    assign s_cd_tx_cmd       = r_is_replay ? s_replay_buffer_out[23]    : udma_cmd_i[23];
 
     assign cfg_cpol_o = r_cfg_cpol;
     assign cfg_cpha_o = r_cfg_cpha;
@@ -189,6 +199,18 @@ module udma_spim_ctrl
 
     assign s_done = r_is_ful ? ((tx_done_i | r_tx_done) & (rx_done_i | r_rx_done)) : (tx_done_i | rx_done_i);
 
+    always_comb begin : proc_s_wordstransf
+        case(s_cd_wordstransf)
+            2'b00:
+                s_wordstransf = 2'h0;
+            2'b01:
+                s_wordstransf = 2'h1;
+            2'b10:
+                s_wordstransf = 2'h3;
+            default:
+                s_wordstransf = 2'h0;
+        endcase // s_cd_wordstransf
+    end
     edge_propagator_tx i_edgeprop
     (
       .clk_i(clk_i),
@@ -348,14 +370,18 @@ module udma_spim_ctrl
         s_clear_cs           = 1'b0;
         tx_size_o            =  'h0;
         rx_size_o            =  'h0;
-        tx_customsize_o      = 1'b0;
-        rx_customsize_o      = 1'b0;
         tx_qpi_o             = r_qpi;
         rx_qpi_o             = r_qpi;
         tx_start_o           = 1'b0;
         rx_start_o           = 1'b0;
         tx_data_o            =  'h0;
         tx_data_valid_o      = 1'b0;
+        tx_wordtransf_o      = 'h0;
+        tx_bitsword_o        = 'h0;
+        tx_lsbfirst_o        = 1'b0;
+        rx_wordtransf_o      = 'h0;
+        rx_bitsword_o        = 'h0;
+        rx_lsbfirst_o        = 1'b0;
         eot_o                = 1'b0;
         s_is_dummy           = r_is_dummy;
         s_qpi                = r_qpi;
@@ -412,13 +438,15 @@ module udma_spim_ctrl
                     begin
                         s_update_qpi    = 1'b1;
                         tx_start_o      = 1'b1;
-                        tx_customsize_o = 1'b1;
                         tx_qpi_o        = s_cd_cfg_qpi;
                         s_qpi           = s_cd_cfg_qpi;
-                        tx_size_o       = {11'h0,s_cd_size};
+                        tx_size_o       = 'h0;
+                        tx_wordtransf_o = 'h0;
+                        tx_bitsword_o   = s_cd_wordsize;
+                        tx_lsbfirst_o   = 1'b0;
                         state_next      = WAIT_DONE;
                         tx_data_valid_o = 1'b1;
-                        tx_data_o       = {s_cd_cmd_data,16'h0};
+                        tx_data_o       = {16'h0,s_cd_cmd_data};
                     end
                     else if(is_cmd_wai)
                     begin
@@ -438,10 +466,11 @@ module udma_spim_ctrl
                     begin
                         s_update_qpi = 1'b1;
                         rx_start_o   = 1'b1;
-                        rx_customsize_o = 1'b0;
                         rx_qpi_o     = s_cd_cfg_qpi;
                         s_qpi        = s_cd_cfg_qpi;
-                        rx_size_o    = {11'h0,s_cd_size};
+                        rx_size_o       = 'h0;
+                        rx_wordtransf_o = 'h0;
+                        rx_bitsword_o   = s_cd_wordsize;
                         state_next   = WAIT_DONE;
                         s_is_dummy   = 1'b1;
                     end
@@ -449,7 +478,10 @@ module udma_spim_ctrl
                     begin
                         s_update_qpi    = 1'b1;
                         tx_start_o      = 1'b1;
-                        tx_customsize_o = s_cd_cfg_custom;
+                        tx_lsbfirst_o   = s_cd_cfg_lsb;
+                        tx_size_o       = s_cd_size_long;
+                        tx_wordtransf_o = s_wordstransf;
+                        tx_bitsword_o   = s_cd_wordsize;
                         tx_qpi_o        = s_cd_cfg_qpi;
                         s_qpi           = s_cd_cfg_qpi;
                         tx_size_o       = s_cd_size_long;
@@ -459,10 +491,12 @@ module udma_spim_ctrl
                     begin
                         s_update_qpi = 1'b1;
                         rx_start_o   = 1'b1;
-                        rx_customsize_o = s_cd_cfg_custom;
+                        rx_lsbfirst_o   = s_cd_cfg_lsb;
+                        rx_size_o       = s_cd_size_long;
+                        rx_wordtransf_o = s_wordstransf;
+                        rx_bitsword_o   = s_cd_wordsize;
                         rx_qpi_o     = s_cd_cfg_qpi;
                         s_qpi        = s_cd_cfg_qpi;
-                        rx_size_o    = s_cd_size_long;
                         state_next   = WAIT_DONE;
                     end
                     else if(is_cmd_ful)
@@ -470,13 +504,18 @@ module udma_spim_ctrl
                         s_is_ful     = 1'b1;
                         s_update_qpi = 1'b1;
                         rx_start_o   = 1'b1;
+                        tx_start_o   = 1'b1;
                         s_qpi        = 1'b0;
                         rx_qpi_o     = 1'b0;
-                        rx_size_o    = s_cd_size_long;
-                        tx_start_o   = 1'b1;
-                        tx_customsize_o = s_cd_cfg_custom;
                         tx_qpi_o     = 1'b0;
+                        rx_size_o    = s_cd_size_long;
                         tx_size_o    = s_cd_size_long;
+                        rx_bitsword_o   = s_cd_wordsize;
+                        tx_bitsword_o   = s_cd_wordsize;
+                        rx_lsbfirst_o = s_cd_cfg_lsb;
+                        tx_lsbfirst_o = s_cd_cfg_lsb;
+                        rx_wordtransf_o = s_wordstransf;
+                        tx_wordtransf_o = s_wordstransf;
                         state_next   = WAIT_DONE;
                     end
                     else if(is_cmd_rxc)
@@ -484,10 +523,12 @@ module udma_spim_ctrl
                         s_update_qpi = 1'b1;
                         s_update_chk = 1'b1;
                         rx_start_o   = 1'b1;
-                        rx_customsize_o = s_cd_cfg_custom;
                         rx_qpi_o     = s_cd_cfg_qpi;
                         s_qpi        = s_cd_cfg_qpi;
-                        rx_size_o    = {12'h0,s_cd_size[3:0]};
+                        rx_size_o       = 'h0;
+                        rx_wordtransf_o = 'h0;
+                        rx_bitsword_o   = {1'b0,s_cd_wordsize[3:0]};
+                        rx_lsbfirst_o = s_cd_cfg_lsb;
                         state_next   = WAIT_CHECK;
                     end
                     else if(is_cmd_rpt)

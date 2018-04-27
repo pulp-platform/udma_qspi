@@ -167,6 +167,13 @@ module udma_spim_top
     logic    s_tx_customsize;
     logic    s_rx_customsize;
     
+    logic  [4:0]  s_tx_bitsword;
+    logic  [1:0]  s_tx_wordtransf;
+    logic         s_tx_lsbfirst;
+    logic  [4:0]  s_rx_bitsword;
+    logic  [1:0]  s_rx_wordtransf;
+    logic         s_rx_lsbfirst;
+
     assign s_clkdiv_en = 1'b1;
 
     assign data_tx_datasize_o = 2'b10;
@@ -355,8 +362,10 @@ module udma_spim_top
 
         .tx_start_o(s_tx_start),
         .tx_size_o(s_tx_size),
-        .tx_customsize_o(s_tx_customsize),
         .tx_qpi_o(s_tx_qpi),
+        .tx_bitsword_o(s_tx_bitsword),
+        .tx_wordtransf_o(s_tx_wordtransf),
+        .tx_lsbfirst_o(s_tx_lsbfirst),
         .tx_done_i(s_tx_done),
         .tx_data_o(s_tx_data),
         .tx_data_valid_o(s_tx_data_valid),
@@ -364,7 +373,9 @@ module udma_spim_top
 
         .rx_start_o(s_rx_start),
         .rx_size_o(s_rx_size),
-        .rx_customsize_o(s_rx_customsize),
+        .rx_bitsword_o(s_rx_bitsword),
+        .rx_wordtransf_o(s_rx_wordtransf),
+        .rx_lsbfirst_o(s_rx_lsbfirst),
         .rx_qpi_o(s_rx_qpi),
         .rx_done_i(s_rx_done),
         .rx_data_i(s_rx_data),
@@ -398,7 +409,9 @@ module udma_spim_top
 
         .tx_start_i(s_tx_start),
         .tx_size_i(s_tx_size),
-        .tx_customsize_i(s_tx_customsize),
+        .tx_bitsword_i(s_tx_bitsword),
+        .tx_wordtransf_i(s_tx_wordtransf),
+        .tx_lsbfirst_i(s_tx_lsbfirst),
         .tx_qpi_i(s_tx_qpi),
         .tx_done_o(s_tx_done),
         .tx_data_i(s_tx_data),
@@ -407,7 +420,9 @@ module udma_spim_top
 
         .rx_start_i(s_rx_start),
         .rx_size_i(s_rx_size),
-        .rx_customsize_i(s_rx_customsize),
+        .rx_bitsword_i(s_rx_bitsword),
+        .rx_wordtransf_i(s_rx_wordtransf),
+        .rx_lsbfirst_i(s_rx_lsbfirst),
         .rx_qpi_i(s_rx_qpi),
         .rx_done_o(s_rx_done),
         .rx_data_o(s_rx_data),

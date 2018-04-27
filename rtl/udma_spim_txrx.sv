@@ -23,10 +23,7 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-`define SPI_STD_TX  2'b00
-`define SPI_STD_RX  2'b01
-`define SPI_QUAD_TX 2'b10
-`define SPI_QUAD_RX 2'b11
+`include "udma_spim_defines.sv" 
 
 module udma_spim_txrx
 (
@@ -39,7 +36,9 @@ module udma_spim_txrx
 	input  logic         tx_start_i,
 	input  logic [15:0]  tx_size_i,
     input  logic         tx_qpi_i,
-    input  logic         tx_customsize_i,
+    input  logic  [4:0]  tx_bitsword_i,
+    input  logic  [1:0]  tx_wordtransf_i,
+    input  logic         tx_lsbfirst_i,
 	output logic         tx_done_o,
 	input  logic [31:0]  tx_data_i,
 	input  logic         tx_data_valid_i,
@@ -48,7 +47,9 @@ module udma_spim_txrx
 	input  logic         rx_start_i,
 	input  logic [15:0]  rx_size_i,
     input  logic         rx_qpi_i,
-    input  logic         rx_customsize_i,
+    input  logic  [4:0]  rx_bitsword_i,
+    input  logic  [1:0]  rx_wordtransf_i,
+    input  logic         rx_lsbfirst_i,
 	output logic         rx_done_o,
 	output logic [31:0]  rx_data_o,
 	output logic         rx_data_valid_o,
@@ -69,24 +70,17 @@ module udma_spim_txrx
     enum logic [3:0] {TX_IDLE,TX_SEND,TX_WAIT_DATA} tx_state,tx_state_next;
     enum logic [3:0] {RX_IDLE,RX_RECEIVE} rx_state,rx_state_next;
 
-    logic  [4:0] r_tx_counter_lo;
-    logic  [4:0] r_tx_counter_last;
-    logic [10:0] r_tx_counter_hi;
-    logic  [4:0] s_tx_counter_lo;
-    logic [10:0] s_tx_counter_hi;
-
-    logic  [4:0] r_rx_counter_lo;
-    logic  [4:0] r_rx_counter_last;
-    logic [10:0] r_rx_counter_hi;
-    logic  [4:0] s_rx_counter_lo;
-    logic [10:0] s_rx_counter_hi;
+    logic [15:0] s_tx_counter_hi;
+    logic [15:0] s_rx_counter_hi;
+    logic [15:0] r_counter_hi;
+    logic        s_tx_sample_hi;
+    logic        s_rx_sample_hi;
 
     logic [31:0] s_tx_shift_reg;
     logic [31:0] r_tx_shift_reg;
     logic [31:0] s_rx_shift_reg;
     logic [31:0] r_rx_shift_reg;
 
-	logic  [4:0] s_in_shift;
 	logic        s_tx_clken; 
 	logic        s_rx_clken; 
 	logic        r_rx_clken;
@@ -96,7 +90,7 @@ module udma_spim_txrx
     logic        s_tx_is_last;
     logic        s_rx_is_last;
 
-	logic        s_sample_tx_in;
+	logic        s_tx_sample_in;
 	logic        s_sample_rx_in;
 
 	logic        s_tx_driving;
@@ -110,8 +104,7 @@ module udma_spim_txrx
 	logic [1:0] s_rx_mode;
 	logic [1:0] s_spi_mode;
 
-	logic s_tx_lo_done;
-	logic s_rx_lo_done;
+	logic s_bits_done;
 
     logic s_rx_idle;
     logic s_tx_idle;
@@ -125,33 +118,110 @@ module udma_spim_txrx
 	logic s_spi_clk_inv;
     logic s_clken;
 
-    logic r_customsize;
+    logic       r_lsbfirst;
+    logic [4:0] r_bitsword;
+    logic [1:0] r_wordtransf;
 
     logic [4:0] s_tx_counter_bits;
-    logic [4:0] r_tx_counter_bits;
     logic [4:0] s_rx_counter_bits;
-    logic [4:0] r_rx_counter_bits;
+    logic [4:0] r_counter_bits;
+    logic       s_tx_sample_bits;
+    logic       s_rx_sample_bits;
+
+    logic [1:0] s_tx_counter_transf;
+    logic [1:0] s_rx_counter_transf;
+    logic [1:0] r_counter_transf;
+    logic       s_tx_sample_transf;
+    logic       s_rx_sample_transf;
 
     logic    s_spi_clk_cpha0;
     logic    s_clk_inv;
     logic    s_spi_clk_cpha1;
 
+    logic [4:0] s_bit_index;
+    logic [4:0] s_bit_offset_add;
+    logic [4:0] r_bit_offset;
 
+    logic [31:0] s_data_rx;
 
+    always_comb begin : proc_offset
+        case(r_wordtransf)
+            2'b00:
+                s_bit_offset_add=5'h0;
+            2'b01:
+                s_bit_offset_add=5'h10;
+            2'b10:
+                s_bit_offset_add=5'h8;
+            2'b11:
+                s_bit_offset_add=5'h8;
+        endcase // r_bitsword[4:3]
+    end
 
-    assign s_spi_sdo0 = s_tx_driving ? ((tx_qpi_i) ? (r_customsize ? r_tx_shift_reg[28] : r_tx_shift_reg[4]) : (r_customsize ? r_tx_shift_reg[31] : r_tx_shift_reg[7])) : 1'b0;
-    assign s_spi_sdo1 =  (s_tx_driving & tx_qpi_i) ? (r_customsize ? r_tx_shift_reg[29] : r_tx_shift_reg[5]) : 1'b0;
-    assign s_spi_sdo2 =  (s_tx_driving & tx_qpi_i) ? (r_customsize ? r_tx_shift_reg[30] : r_tx_shift_reg[6]) : 1'b0;
-    assign s_spi_sdo3 =  (s_tx_driving & tx_qpi_i) ? (r_customsize ? r_tx_shift_reg[31] : r_tx_shift_reg[7]) : 1'b0;
+    always_comb begin : proc_index
+        if(r_lsbfirst)
+            s_bit_index = r_bit_offset + r_counter_bits;
+        else    
+            s_bit_index = r_bit_offset + r_bitsword - r_counter_bits;
+    end
+
+    always_comb begin : proc_outputs
+        if(tx_qpi_i)
+        begin
+            if(r_lsbfirst)
+            begin
+                s_spi_sdo0 = r_tx_shift_reg[s_bit_index-3];
+                s_spi_sdo1 = r_tx_shift_reg[s_bit_index-2];
+                s_spi_sdo2 = r_tx_shift_reg[s_bit_index-1];
+                s_spi_sdo3 = r_tx_shift_reg[s_bit_index];
+            end
+            else
+            begin
+                s_spi_sdo0 = r_tx_shift_reg[s_bit_index];
+                s_spi_sdo1 = r_tx_shift_reg[s_bit_index+1];
+                s_spi_sdo2 = r_tx_shift_reg[s_bit_index+2];
+                s_spi_sdo3 = r_tx_shift_reg[s_bit_index+3];
+            end
+        end
+        else
+        begin
+            s_spi_sdo0 = r_tx_shift_reg[s_bit_index];
+            s_spi_sdo1 = 1'b0;
+            s_spi_sdo2 = 1'b0;
+            s_spi_sdo3 = 1'b0;
+        end
+    end
+
+    always_comb begin : proc_input
+        s_data_rx = r_rx_shift_reg;
+        if(rx_qpi_i)
+        begin
+            if(r_lsbfirst)
+            begin
+                s_data_rx[s_bit_index]   = spi_sdi0_i;
+                s_data_rx[s_bit_index+1] = spi_sdi1_i;
+                s_data_rx[s_bit_index+2] = spi_sdi2_i;
+                s_data_rx[s_bit_index+3] = spi_sdi3_i;
+            end
+            else
+            begin
+                s_data_rx[s_bit_index]   = spi_sdi0_i;
+                s_data_rx[s_bit_index+1] = spi_sdi1_i;
+                s_data_rx[s_bit_index+2] = spi_sdi2_i;
+                s_data_rx[s_bit_index+3] = spi_sdi3_i;
+            end
+        end
+        else
+        begin
+            s_data_rx[s_bit_index] = spi_sdi0_i;
+        end
+    end
 
     assign s_clken = s_is_ful ? s_tx_clken : (s_tx_clken | s_rx_clken);
 
-    assign s_in_shift = tx_size_i[4:0];
-
     assign s_spi_mode = s_tx_driving ? s_tx_mode : s_rx_mode;
 
-    assign s_tx_lo_done = tx_qpi_i ? (r_tx_counter_lo==3) : (r_tx_counter_lo==0);
-    assign s_rx_lo_done = rx_qpi_i ? (r_rx_counter_lo==3) : (r_rx_counter_lo==0);
+    assign s_bits_done   = (r_counter_bits   == r_bitsword);
+    assign s_transf_done = (r_counter_transf == r_wordtransf);
 
     assign s_is_ful = (tx_start_i & rx_start_i) | r_is_ful;
 
@@ -222,31 +292,35 @@ module udma_spim_txrx
 `endif
 
     always_comb begin : proc_TX_SM
-    	tx_state_next  = tx_state;
-    	s_tx_clken     = 1'b0;
-    	s_sample_tx_in = 1'b0;
-    	s_tx_counter_lo = r_tx_counter_lo;
-    	s_tx_counter_hi = r_tx_counter_hi;
-        s_tx_counter_bits = r_tx_counter_bits;
-    	tx_done_o       = 1'b0;
-    	s_tx_shift_reg  = r_tx_shift_reg;
-    	tx_data_ready_o = 1'b0;
-    	s_tx_driving    = 1'b0;
-    	s_tx_mode       = `SPI_QUAD_RX;
-        s_tx_idle       = 1'b0;
-        s_tx_is_last    = r_tx_is_last;
+    	tx_state_next       = tx_state;
+        tx_data_ready_o     = 1'b0;
+        tx_done_o           = 1'b0;
+    	s_tx_clken          = 1'b0;
+    	s_tx_sample_in      = 1'b0;
+    	s_tx_shift_reg      = r_tx_shift_reg;
+    	s_tx_driving        = 1'b0;
+    	s_tx_mode           = `SPI_QUAD_RX;
+        s_tx_idle           = 1'b0;
+        s_tx_is_last        = r_tx_is_last;
+        s_tx_counter_hi     = r_counter_hi;
+        s_tx_counter_bits   = r_counter_bits;
+        s_tx_counter_transf = r_counter_transf;
+        s_tx_sample_hi      = 1'b0;
+        s_tx_sample_bits    = 1'b0;
+        s_tx_sample_transf  = 1'b0;
     	case(tx_state)
     		TX_IDLE:
     		begin
-                s_tx_counter_bits = 'h0;
     			if(tx_start_i)
     			begin
-                    if (tx_size_i[15:5] == 0)
+                    s_tx_counter_bits = tx_qpi_i ? 'h3 : 'h0;
+                    s_tx_sample_bits  = 1'b1;
+                    if (tx_size_i == 0)
                         s_tx_is_last = 1'b1;
                     else
                         s_tx_is_last = 1'b0;
     				s_tx_driving   = 1'b1;
-    				s_sample_tx_in = 1'b1;
+    				s_tx_sample_in = 1'b1;
     				if(tx_data_valid_i)
     				begin
 				    	tx_data_ready_o = 1'b1;
@@ -261,48 +335,50 @@ module udma_spim_txrx
     		end
     		TX_SEND:
     		begin
-		    	s_tx_driving    = 1'b1;
-    			s_tx_clken = 1'b1;
-    			s_tx_mode = tx_qpi_i ? `SPI_QUAD_TX : `SPI_STD_TX;
-    			if(s_tx_lo_done && (r_tx_counter_hi==0))
+		    	s_tx_driving = 1'b1;
+    			s_tx_clken   = 1'b1;
+    			s_tx_mode = tx_qpi_i ? `SPI_QUAD_TX : `SPI_STD;
+
+                s_tx_sample_bits = 1'b1;
+
+                if(s_bits_done)
+                begin
+                    if(tx_qpi_i)
+                        s_tx_counter_bits = 'h3;
+                    else
+                        s_tx_counter_bits = 'h0;
+                end
+                else
+                begin
+                    if(tx_qpi_i)
+                        s_tx_counter_bits = r_counter_bits + 4;
+                    else
+                        s_tx_counter_bits = r_counter_bits + 1;
+                end
+
+                if(s_bits_done)
+                begin
+                    s_tx_sample_transf = 1'b1;
+                    if(s_transf_done)
+                        s_tx_counter_transf = 'h0;
+                    else
+                        s_tx_counter_transf = r_counter_transf + 1;
+                end
+
+    			if(s_bits_done && (r_counter_hi==0))
     			begin
-                    if (!r_customsize)
-                    begin
-                        if (tx_qpi_i)
-                        begin
-                            if (r_tx_counter_bits == 3'h1)
-                            begin
-                                s_tx_counter_bits = 'h0;
-                            end
-                            else
-                            begin
-                                s_tx_counter_bits = r_tx_counter_bits + 1;
-                            end
-                        end
-                        else
-                        begin
-                            if (r_tx_counter_bits == 3'h7)
-                            begin
-                                s_tx_counter_bits = 'h0;
-                            end
-                            else
-                            begin
-                                s_tx_counter_bits = r_tx_counter_bits + 1;
-                            end
-                        end                        
-                    end
                     if (r_tx_is_last)
                     begin
                         s_tx_is_last       = 1'b0; 
         				tx_done_o = 1'b1;
                         if(tx_start_i)
     				    begin
-    					   s_sample_tx_in = 1'b1;
+    					   s_tx_sample_in = 1'b1;
     					   if(tx_data_valid_i)
     					   begin
 					    	  tx_data_ready_o = 1'b1;
     						  tx_state_next = TX_SEND; 
-		  					   s_tx_shift_reg   = tx_data_i;
+		  					  s_tx_shift_reg   = tx_data_i;
     					   end
     					   else
     						  tx_state_next = TX_WAIT_DATA;
@@ -312,98 +388,41 @@ module udma_spim_txrx
                     end
                     else
                     begin
-                        s_tx_counter_lo = r_tx_counter_last;
                         s_tx_is_last       = 1'b1; 
-                        if(tx_data_valid_i)
+                        if(s_transf_done)
                         begin
+                            if(tx_data_valid_i)
+                            begin
+                                tx_data_ready_o = 1'b1;
+                                tx_state_next   = TX_SEND; 
+                                s_tx_shift_reg  = tx_data_i;
+                            end
+                            else
+                                tx_state_next = TX_WAIT_DATA;
+                        end
+                    end
+    			end
+    			else if (s_bits_done)
+    			begin
+                    s_tx_sample_hi  = 1'b1;
+    				s_tx_counter_hi = r_counter_hi -1;
+                    if(s_transf_done)
+                    begin
+       					if(tx_data_valid_i)
+   	    				begin
                             tx_data_ready_o = 1'b1;
-                            tx_state_next = TX_SEND; 
-                            s_tx_shift_reg   = tx_data_i;
-                        end
-                        else
-                            tx_state_next = TX_WAIT_DATA;
-                    end
-    			end
-    			else if (s_tx_lo_done)
-    			begin
-    				s_tx_counter_hi = r_tx_counter_hi -1;
-    				s_tx_counter_lo = 5'h1F; 
-                    if (!r_customsize)
-                    begin
-                        if (tx_qpi_i)
-                        begin
-                            if (r_tx_counter_bits == 3'h1)
-                            begin
-                                s_tx_counter_bits = 'h0;
-                            end
-                            else
-                            begin
-                                s_tx_counter_bits = r_tx_counter_bits + 1;
-                            end
-                        end
-                        else
-                        begin
-                            if (r_tx_counter_bits == 3'h7)
-                            begin
-                                s_tx_counter_bits = 'h0;
-                            end
-                            else
-                            begin
-                                s_tx_counter_bits = r_tx_counter_bits + 1;
-                            end
-                        end                        
-                    end
-   					if(tx_data_valid_i)
-   					begin
-				    	tx_data_ready_o = 1'b1;
-   						tx_state_next = TX_SEND; 
-	  					s_tx_shift_reg   = tx_data_i;
-   					end
-   					else
-   						tx_state_next = TX_WAIT_DATA;
-    			end
-    			else
-    			begin
-    				s_tx_counter_lo = tx_qpi_i ? (r_tx_counter_lo - 5'd4)      : (r_tx_counter_lo - 5'd1);
-                    if (r_customsize)
-                    begin
-                        s_tx_shift_reg  = tx_qpi_i ? {r_tx_shift_reg[27:0],4'b000} : {r_tx_shift_reg[30:0],1'b0};
-                    end
-                    else
-                    begin
-                        if (tx_qpi_i)
-                        begin
-                            if (r_tx_counter_bits == 3'h1)
-                            begin
-                                s_tx_counter_bits = 'h0;
-                                s_tx_shift_reg = {8'h0,r_tx_shift_reg[31:8]};
-                            end
-                            else
-                            begin
-                                s_tx_counter_bits = r_tx_counter_bits + 1;
-                                s_tx_shift_reg = {r_tx_shift_reg[31:8],r_tx_shift_reg[3:0],4'h0};
-                            end
-                        end
-                        else
-                        begin
-                            if (r_tx_counter_bits == 3'h7)
-                            begin
-                                s_tx_counter_bits = 'h0;
-                                s_tx_shift_reg = {8'h0,r_tx_shift_reg[31:8]};
-                            end
-                            else
-                            begin
-                                s_tx_counter_bits = r_tx_counter_bits + 1;
-                                s_tx_shift_reg = {r_tx_shift_reg[31:8],r_tx_shift_reg[6:0],1'b0};
-                            end
-                        end
+                            tx_state_next   = TX_SEND; 
+	  	                    s_tx_shift_reg  = tx_data_i;
+   					    end
+   					    else
+   						   tx_state_next = TX_WAIT_DATA;
                     end
     			end
     		end
     		TX_WAIT_DATA:
     		begin
 		    	s_tx_driving = 1'b1;
-    			s_tx_mode    = tx_qpi_i ? `SPI_QUAD_TX : `SPI_STD_TX;
+    			s_tx_mode    = tx_qpi_i ? `SPI_QUAD_TX : `SPI_STD;
     			if(tx_data_valid_i)
     			begin
 			    	tx_data_ready_o = 1'b1;
@@ -416,30 +435,34 @@ module udma_spim_txrx
     end
 
     always_comb begin : proc_RX_SM
-    	rx_state_next   = rx_state;
-    	s_rx_clken      = 1'b0;
-		rx_done_o       = 1'b0;
-		rx_data_o       =  'h0;
-		rx_data_valid_o = 1'b0;
-		s_rx_mode       = `SPI_QUAD_RX;
-		s_sample_rx_in  = 1'b0;
-		s_rx_counter_lo = r_rx_counter_lo;
-		s_rx_counter_hi = r_rx_counter_hi;
-        s_rx_counter_bits = r_rx_counter_bits;
-        s_rx_shift_reg  = r_rx_shift_reg;
-        s_rx_idle       = 1'b0;
-        s_rx_is_last    = r_rx_is_last;
+    	rx_state_next       = rx_state;
+    	s_rx_clken          = 1'b0;
+		rx_done_o           = 1'b0;
+		rx_data_o           =  'h0;
+		rx_data_valid_o     = 1'b0;
+		s_rx_mode           = `SPI_QUAD_RX;
+		s_sample_rx_in      = 1'b0;
+		s_rx_counter_hi     = r_counter_hi;
+        s_rx_counter_bits   = r_counter_bits;
+        s_rx_counter_transf = r_counter_transf;
+        s_rx_shift_reg      = r_rx_shift_reg;
+        s_rx_idle           = 1'b0;
+        s_rx_is_last        = r_rx_is_last;
+        s_rx_sample_hi      = 1'b0;
+        s_rx_sample_bits    = 1'b0;
+        s_rx_sample_transf  = 1'b0;
     	case(rx_state)
     		RX_IDLE:
     		begin
     			if(rx_start_i)
     			begin
-                    s_rx_mode      = rx_qpi_i ? `SPI_QUAD_RX : `SPI_STD_RX;
+                    s_rx_mode      = rx_qpi_i ? `SPI_QUAD_RX : `SPI_STD;
     				s_sample_rx_in = 1'b1;
    					rx_state_next  = RX_RECEIVE;
                     s_rx_shift_reg = r_rx_shift_reg;
-                    s_rx_counter_bits = 'h0;
-                    if (rx_size_i[15:5] == 0)
+                    s_rx_counter_bits = rx_qpi_i ? 'h3 : 'h0;
+                    s_rx_sample_bits  = 1'b1;
+                    if (rx_size_i == 0)
                         s_rx_is_last = 1'b1;
                     else
                         s_rx_is_last = 1'b0;
@@ -449,125 +472,43 @@ module udma_spim_txrx
     		end
     		RX_RECEIVE:
     		begin
-                s_rx_mode      = rx_qpi_i ? `SPI_QUAD_RX : `SPI_STD_RX;
-    			s_rx_clken      = 1'b1;
+                s_rx_mode        = rx_qpi_i ? `SPI_QUAD_RX : `SPI_STD;
+    			s_rx_clken       = 1'b1;
+                s_rx_sample_bits = 1'b1;
+                s_rx_shift_reg   = s_data_rx;
                 if (!s_is_ful || (s_is_ful && s_tx_clken))
                 begin
-                    if(r_customsize)
-                    begin
-                        s_rx_shift_reg  = rx_qpi_i ? {r_rx_shift_reg[27:0],spi_sdi3_i,spi_sdi2_i,spi_sdi1_i,spi_sdi0_i} : {r_rx_shift_reg[30:0],spi_sdi0_i};
-                    end
+                    if(s_bits_done)
+                        if(rx_qpi_i)
+                            s_rx_counter_bits = 'h3;
+                        else
+                            s_rx_counter_bits = 'h0;
                     else
                     begin
                         if(rx_qpi_i)
-                        begin
-                            case(r_rx_counter_bits)
-                                5'd0:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:8],spi_sdi3_i,spi_sdi2_i,spi_sdi1_i,spi_sdi0_i,r_rx_shift_reg[3:0]};
-                                5'd1:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:4],spi_sdi3_i,spi_sdi2_i,spi_sdi1_i,spi_sdi0_i};
-                                5'd2:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:16],spi_sdi3_i,spi_sdi2_i,spi_sdi1_i,spi_sdi0_i,r_rx_shift_reg[11:0]};
-                                5'd3:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:12],spi_sdi3_i,spi_sdi2_i,spi_sdi1_i,spi_sdi0_i,r_rx_shift_reg[7:0]};
-                                5'd4:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:24],spi_sdi3_i,spi_sdi2_i,spi_sdi1_i,spi_sdi0_i,r_rx_shift_reg[19:0]};
-                                5'd5:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:20],spi_sdi3_i,spi_sdi2_i,spi_sdi1_i,spi_sdi0_i,r_rx_shift_reg[15:0]};
-                                5'd6:
-                                    s_rx_shift_reg = {                      spi_sdi3_i,spi_sdi2_i,spi_sdi1_i,spi_sdi0_i,r_rx_shift_reg[27:0]};
-                                5'd7:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:28],spi_sdi3_i,spi_sdi2_i,spi_sdi1_i,spi_sdi0_i,r_rx_shift_reg[23:0]};
-                            endcase // r_rx_counter_bits
-                            if(r_rx_counter_bits == 7)
-                                s_rx_counter_bits = 0;
-                            else
-                                s_rx_counter_bits = r_rx_counter_bits + 1;
-                        end
+                            s_rx_counter_bits = r_counter_bits + 4;
                         else
-                        begin
-                            case(r_rx_counter_bits)
-                                5'd0:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:8],spi_sdi0_i,r_rx_shift_reg[6:0]};
-                                5'd1:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:7],spi_sdi0_i,r_rx_shift_reg[5:0]};
-                                5'd2:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:6],spi_sdi0_i,r_rx_shift_reg[4:0]};
-                                5'd3:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:5],spi_sdi0_i,r_rx_shift_reg[3:0]};
-                                5'd4:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:4],spi_sdi0_i,r_rx_shift_reg[2:0]};
-                                5'd5:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:3],spi_sdi0_i,r_rx_shift_reg[1:0]};
-                                5'd6:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:2],spi_sdi0_i,r_rx_shift_reg[0]};
-                                5'd7:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:1],spi_sdi0_i};
-                                5'd8:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:16],spi_sdi0_i,r_rx_shift_reg[14:0]};
-                                5'd9:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:15],spi_sdi0_i,r_rx_shift_reg[13:0]};
-                                5'd10:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:14],spi_sdi0_i,r_rx_shift_reg[12:0]};
-                                5'd11:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:13],spi_sdi0_i,r_rx_shift_reg[11:0]};
-                                5'd12:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:12],spi_sdi0_i,r_rx_shift_reg[10:0]};
-                                5'd13:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:11],spi_sdi0_i,r_rx_shift_reg[9:0]};
-                                5'd14:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:10],spi_sdi0_i,r_rx_shift_reg[8:0]};
-                                5'd15:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:9],spi_sdi0_i,r_rx_shift_reg[7:0]};
-                                5'd16:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:24],spi_sdi0_i,r_rx_shift_reg[22:0]};
-                                5'd17:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:23],spi_sdi0_i,r_rx_shift_reg[21:0]};
-                                5'd18:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:22],spi_sdi0_i,r_rx_shift_reg[20:0]};
-                                5'd19:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:21],spi_sdi0_i,r_rx_shift_reg[19:0]};
-                                5'd20:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:20],spi_sdi0_i,r_rx_shift_reg[18:0]};
-                                5'd21:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:19],spi_sdi0_i,r_rx_shift_reg[17:0]};
-                                5'd22:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:18],spi_sdi0_i,r_rx_shift_reg[16:0]};
-                                5'd23:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:17],spi_sdi0_i,r_rx_shift_reg[15:0]};
-                                5'd24:
-                                    s_rx_shift_reg = {spi_sdi0_i,r_rx_shift_reg[30:0]};
-                                5'd25:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31],spi_sdi0_i,r_rx_shift_reg[29:0]};
-                                5'd26:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:30],spi_sdi0_i,r_rx_shift_reg[28:0]};
-                                5'd27:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:29],spi_sdi0_i,r_rx_shift_reg[27:0]};
-                                5'd28:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:28],spi_sdi0_i,r_rx_shift_reg[26:0]};
-                                5'd29:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:27],spi_sdi0_i,r_rx_shift_reg[25:0]};
-                                5'd30:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:26],spi_sdi0_i,r_rx_shift_reg[24:0]};
-                                5'd31:
-                                    s_rx_shift_reg = {r_rx_shift_reg[31:25],spi_sdi0_i,r_rx_shift_reg[23:0]};
-                            endcase // r_rx_counter_bits
-                            if(r_rx_counter_bits == 5'd31)
-                                s_rx_counter_bits = 0;
-                            else
-                                s_rx_counter_bits = r_rx_counter_bits + 1;
-                        end
+                            s_rx_counter_bits = r_counter_bits + 1;
                     end
-                    s_rx_counter_lo = rx_qpi_i ? (r_rx_counter_lo - 5'd4) : (r_rx_counter_lo - 5'd1);
+
     			    if(r_rx_clken)
     			    begin
-	    		    	if(s_rx_lo_done)
+	    		    	if(s_bits_done)
     			    	begin
-    			    		rx_data_o       = s_rx_shift_reg;
-    			    		rx_data_valid_o = 1'b1;
+                            s_rx_sample_transf = 1'b1;
+                            if(r_counter_transf == r_wordtransf)
+                            begin
+    			    		   rx_data_o           = s_rx_shift_reg;
+    			    		   rx_data_valid_o     = 1'b1;
+                               s_rx_counter_transf = 0;
+                            end
+                            else
+                            begin
+                                s_rx_counter_transf = r_counter_transf + 1;
+                            end
     			    	end
                         
-	    		    	if(s_rx_lo_done && (r_rx_counter_hi==0))
+	    		    	if(s_bits_done && (r_counter_hi==0))
     			    	begin
                             if (r_rx_is_last)
                             begin
@@ -583,18 +524,13 @@ module udma_spim_txrx
                             end
                             else
                             begin
-                                s_rx_counter_lo = r_rx_counter_last;
                                 s_rx_is_last       = 1'b1; 
                             end
     			    	end
-	    		    	else if (s_rx_lo_done)
+	    		    	else if (s_bits_done)
     			    	begin
-    			    		s_rx_counter_hi = r_rx_counter_hi -1;
-    			    		s_rx_counter_lo = 5'h1F; 
-    			    	end
-	    		    	else
-    			    	begin
-    			    		s_rx_counter_lo = rx_qpi_i ? (r_rx_counter_lo - 5'd4) : (r_rx_counter_lo - 5'd1);
+                            s_rx_sample_hi  = 1'b1;
+    			    		s_rx_counter_hi = r_counter_hi -1;
     			    	end
     			    end
                 end
@@ -637,20 +573,17 @@ module udma_spim_txrx
     begin
         if (rstn_i == 1'b0)
         begin
-            r_tx_shift_reg <= 'h0;
-            r_rx_shift_reg <= 'h0;
-            r_tx_counter_bits <= 'h0;
-            r_rx_counter_bits <= 'h0;
-            r_tx_counter_last <= 'h0;
-            r_rx_counter_last <= 'h0;
-            r_tx_counter_lo <= 'h0;
-            r_tx_counter_hi <= 'h0;
-            r_rx_counter_lo <= 'h0;
-            r_rx_counter_hi <= 'h0;
-            r_rx_clken      <= 1'b0;
-            r_is_ful        <= 1'b0;
-            r_customsize    <= 1'b0;
-            //r_is_qpi        <= 1'b0; //Not USed // IGOR removed
+            r_tx_shift_reg   <=  'h0;
+            r_rx_shift_reg   <=  'h0;
+            r_counter_hi     <=  'h0;
+            r_counter_bits   <=  'h0;
+            r_counter_transf <=  'h0;
+            r_rx_clken       <= 1'b0;
+            r_is_ful         <= 1'b0;
+            r_lsbfirst       <= 1'b0;
+            r_bitsword       <=  'h0;
+            r_wordtransf     <=  'h0;
+            r_bit_offset     <=  'h0;
         end
         else
         begin
@@ -658,57 +591,61 @@ module udma_spim_txrx
             r_rx_shift_reg <= s_rx_shift_reg;
             r_tx_shift_reg <= s_tx_shift_reg;
 
-            r_rx_counter_bits <= s_rx_counter_bits;
-            r_tx_counter_bits <= s_tx_counter_bits;
+            if(s_tx_sample_bits)
+                r_counter_bits <= s_tx_counter_bits;
+            else if(s_rx_sample_bits)
+                r_counter_bits <= s_rx_counter_bits;
+
+            if(s_tx_sample_transf)
+                r_counter_transf <= s_tx_counter_transf;
+            else if(s_rx_sample_transf)
+                r_counter_transf <= s_rx_counter_transf;
+
+            if(tx_start_i || rx_start_i)
+                r_bit_offset <= 'h0;
+            else if(s_tx_sample_transf || s_rx_sample_transf)
+                r_bit_offset <= r_bit_offset + s_bit_offset_add;
 
             if (tx_start_i && rx_start_i)
                 r_is_ful  <= 1'b1;
             else if (s_tx_idle && s_rx_idle)
                 r_is_ful  <= 1'b0;
-            if (s_sample_tx_in || s_sample_rx_in)
-                r_customsize <= tx_customsize_i | rx_customsize_i;
-        	if(s_sample_tx_in)
-        	begin
-                if (tx_size_i[15:5] == 0)
-                begin
-                    r_tx_counter_lo   <= tx_size_i[4:0];
-                    r_tx_counter_last <= 'h0;
-                    r_tx_counter_hi   <= 'h0;
-                end
-                else
-                begin
-                    r_tx_counter_lo   <= 5'h1F;
-                    r_tx_counter_last <= tx_size_i[4:0];
-                    r_tx_counter_hi   <= tx_size_i[15:5] - 1;
-                end
-        	end
-        	else
-        	begin
-        		r_tx_counter_lo <= s_tx_counter_lo;
-        		r_tx_counter_hi <= s_tx_counter_hi;
-        	end
-        	if(s_sample_rx_in)
-        	begin
-                if (rx_size_i[15:5] == 0)
-                begin
-                    r_rx_counter_lo   <= rx_size_i[4:0];
-                    r_rx_counter_last <= 'h0;
-                    r_rx_counter_hi   <= 'h0;
-                end
-                else
-                begin
-                    r_rx_counter_lo   <= 5'h1F;
-                    r_rx_counter_last <= rx_size_i[4:0];
-                    r_rx_counter_hi   <= rx_size_i[15:5] - 1;
-                end
-        	end
-        	else
-        	begin
-        		r_rx_counter_lo <= s_rx_counter_lo;
-        		r_rx_counter_hi <= s_rx_counter_hi;
-        	end
-        end
 
+            if(s_tx_sample_in)
+            begin
+                r_lsbfirst   <= tx_lsbfirst_i;
+                r_wordtransf <= tx_wordtransf_i;
+                r_bitsword   <= tx_bitsword_i;
+            end
+            else if(s_sample_rx_in)
+            begin
+                r_lsbfirst   <= rx_lsbfirst_i;
+                r_wordtransf <= rx_wordtransf_i;
+                r_bitsword   <= rx_bitsword_i;
+            end
+
+        	if(s_tx_sample_in)
+        	begin
+                if (tx_size_i == 0)
+                    r_counter_hi   <= 'h0;
+                else
+                    r_counter_hi   <= tx_size_i - 1;
+        	end
+            else if(s_sample_rx_in)
+        	begin
+                if (rx_size_i == 0)
+                    r_counter_hi   <= 'h0;
+                else
+                    r_counter_hi   <= rx_size_i - 1;
+        	end
+        	else
+            begin
+                if(s_tx_sample_hi)
+        		  r_counter_hi <= s_tx_counter_hi;
+                else if(s_rx_sample_hi)
+                  r_counter_hi <= s_rx_counter_hi;
+            end
+        end
     end
 
     always_ff @(negedge clk_i, negedge rstn_i)
@@ -719,7 +656,7 @@ module udma_spim_txrx
         	spi_sdo1_o <= 1'b0;
         	spi_sdo2_o <= 1'b0;
         	spi_sdo3_o <= 1'b0;
-        	spi_mode_o <= `SPI_STD_RX;
+        	spi_mode_o <= `SPI_STD;
         end
         else
         begin
@@ -733,8 +670,5 @@ module udma_spim_txrx
         	spi_mode_o <= s_spi_mode;
         end
     end
-
-
-
 
 endmodule // udma_spim_txrx

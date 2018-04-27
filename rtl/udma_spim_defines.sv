@@ -1,6 +1,6 @@
 `define SPI_STD     2'b00
-`define SPI_QUAD_TX 2'b01
-`define SPI_QUAD_RX 2'b10
+`define SPI_QUAD_TX 2'b10
+`define SPI_QUAD_RX 2'b11
 
 `define SPI_CMD_CFG       4'b0000
 `define SPI_CMD_SOT       4'b0001
