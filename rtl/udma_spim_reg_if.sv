@@ -117,14 +117,17 @@ module udma_spim_reg_if #(
     logic                       s_cmd_decode_txrxn;
     logic                 [1:0] s_cmd_decode_ds;
 
+    logic                       s_is_cmd_uca;
+    logic                       s_is_cmd_ucs;
+
     assign s_cmd              = udma_cmd_i[31:28];
     assign s_cmd_decode_txrxn = udma_cmd_i[27];
     assign s_cmd_decode_ds    = udma_cmd_i[26:25];
     assign s_cmd_decode_size  = udma_cmd_i[TRANS_SIZE-1:0];
     assign s_cmd_decode_addr  = udma_cmd_i[L2_AWIDTH_NOAL-1:0];
 
-    assign is_cmd_uca = (s_cmd == `SPI_CMD_SETUP_UCA);
-    assign is_cmd_ucs = (s_cmd == `SPI_CMD_SETUP_UCS);
+    assign s_is_cmd_uca = (s_cmd == `SPI_CMD_SETUP_UCA);
+    assign s_is_cmd_ucs = (s_cmd == `SPI_CMD_SETUP_UCS);
 
     assign s_wr_addr = (cfg_valid_i & ~cfg_rwn_i) ? cfg_addr_i : 5'h0;
     assign s_rd_addr = (cfg_valid_i &  cfg_rwn_i) ? cfg_addr_i : 5'h0;
@@ -183,9 +186,9 @@ module udma_spim_reg_if #(
             r_tx_en          =  'h0;
             r_tx_clr         =  'h0;
 
-            if (udma_cmd_valid_i && udma_cmd_ready_i && (is_cmd_ucs || is_cmd_uca))
+            if (udma_cmd_valid_i && udma_cmd_ready_i && (s_is_cmd_ucs || s_is_cmd_uca))
             begin
-                if(is_cmd_uca)
+                if(s_is_cmd_uca)
                 begin
                     if(s_cmd_decode_txrxn)
                         r_tx_startaddr <= s_cmd_decode_addr;

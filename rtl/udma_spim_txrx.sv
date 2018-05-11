@@ -144,6 +144,8 @@ module udma_spim_txrx
 
     logic [31:0] s_data_rx;
 
+    logic        s_transf_done;
+
     always_comb begin : proc_offset
         case(r_wordtransf)
             2'b00:
