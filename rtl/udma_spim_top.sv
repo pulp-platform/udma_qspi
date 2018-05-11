@@ -176,9 +176,6 @@ module udma_spim_top
 
     assign s_clkdiv_en = 1'b1;
 
-    assign data_tx_datasize_o = 2'b10;
-    assign cmd_datasize_o     = 2'b10;
-
     genvar i;
 
     generate
@@ -212,7 +209,7 @@ module udma_spim_top
 
         .cfg_cmd_startaddr_o ( cfg_cmd_startaddr_o  ),
         .cfg_cmd_size_o      ( cfg_cmd_size_o       ),
-        .cfg_cmd_datasize_o  ( cfg_cmd_datasize_o   ),
+        .cfg_cmd_datasize_o  ( cmd_datasize_o       ),
         .cfg_cmd_continuous_o( cfg_cmd_continuous_o ),
         .cfg_cmd_en_o        ( cfg_cmd_en_o         ),
         .cfg_cmd_clr_o       ( cfg_cmd_clr_o        ),
@@ -234,6 +231,7 @@ module udma_spim_top
 
         .cfg_tx_startaddr_o ( cfg_tx_startaddr_o  ),
         .cfg_tx_size_o      ( cfg_tx_size_o       ),
+        .cfg_tx_datasize_o  ( data_tx_datasize_o  ),
         .cfg_tx_continuous_o( cfg_tx_continuous_o ),
         .cfg_tx_en_o        ( cfg_tx_en_o         ),
         .cfg_tx_clr_o       ( cfg_tx_clr_o        ),

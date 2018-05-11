@@ -62,6 +62,7 @@ module udma_spim_reg_if #(
 
     output logic [L2_AWIDTH_NOAL-1:0] cfg_tx_startaddr_o,
     output logic     [TRANS_SIZE-1:0] cfg_tx_size_o,
+    output logic                [1:0] cfg_tx_datasize_o,
     output logic                      cfg_tx_continuous_o,
     output logic                      cfg_tx_en_o,
     output logic                      cfg_tx_clr_o,
@@ -78,7 +79,6 @@ module udma_spim_reg_if #(
 
     logic [L2_AWIDTH_NOAL-1:0] r_cmd_startaddr;
     logic   [TRANS_SIZE-1 : 0] r_cmd_size;
-    logic              [1 : 0] r_cmd_datasize;
     logic                      r_cmd_continuous;
     logic                      r_cmd_en;
     logic                      r_cmd_clr;
@@ -93,6 +93,7 @@ module udma_spim_reg_if #(
     logic [L2_AWIDTH_NOAL-1:0] r_tx_startaddr;
     logic   [TRANS_SIZE-1 : 0] r_tx_size;
     logic                      r_tx_continuous;
+    logic              [1 : 0] r_tx_datasize;
     logic                      r_tx_en;
     logic                      r_tx_clr;
 
@@ -144,6 +145,7 @@ module udma_spim_reg_if #(
 
     assign cfg_tx_startaddr_o  = r_tx_startaddr;
     assign cfg_tx_size_o       = r_tx_size;
+    assign cfg_tx_datasize_o   = r_tx_datasize;
     assign cfg_tx_continuous_o = r_tx_continuous;
     assign cfg_tx_en_o         = r_tx_en;
     assign cfg_tx_clr_o        = r_tx_clr;
@@ -165,6 +167,7 @@ module udma_spim_reg_if #(
             r_rx_en          =  'h0;
             r_rx_clr         =  'h0;
             r_rx_datasize   <= 2'b10;
+            r_tx_datasize   <= 2'b10;
             r_tx_startaddr  <=  'h0;
             r_tx_size       <=  'h0;
             r_tx_continuous <=  'h0;
@@ -194,6 +197,7 @@ module udma_spim_reg_if #(
                     if(s_cmd_decode_txrxn)
                     begin
                         r_tx_size <= s_cmd_decode_size;
+                        r_tx_datasize <= s_cmd_decode_ds;
                         r_tx_en    = 1'b1;
                     end
                     else
@@ -215,7 +219,6 @@ module udma_spim_reg_if #(
                 begin
                     r_cmd_clr          = cfg_data_i[5];
                     r_cmd_en           = cfg_data_i[4];
-                    r_cmd_datasize    <= cfg_data_i[2:1];
                     r_cmd_continuous  <= cfg_data_i[0];
                 end
                 `REG_RX_SADDR:
@@ -237,6 +240,7 @@ module udma_spim_reg_if #(
                 begin
                     r_tx_clr          = cfg_data_i[5];
                     r_tx_en           = cfg_data_i[4];
+                    r_tx_datasize    <= cfg_data_i[2:1];
                     r_tx_continuous  <= cfg_data_i[0];
                 end
 
