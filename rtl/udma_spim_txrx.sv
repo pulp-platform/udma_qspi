@@ -56,11 +56,14 @@ module udma_spim_txrx
 	input  logic         rx_data_ready_i,
         
 	output logic         spi_clk_o,
-	output logic  [1:0]  spi_mode_o,
-	output logic         spi_sdo0_o,
-	output logic         spi_sdo1_o,
-	output logic         spi_sdo2_o,
-	output logic         spi_sdo3_o,
+    output logic         spi_oen0_o,
+    output logic         spi_oen1_o,
+    output logic         spi_oen2_o,
+    output logic         spi_oen3_o,
+    output logic         spi_sdo0_o,
+    output logic         spi_sdo1_o,
+    output logic         spi_sdo2_o,
+    output logic         spi_sdo3_o,
 	input  logic         spi_sdi0_i,
 	input  logic         spi_sdi1_i,
 	input  logic         spi_sdi2_i,
@@ -102,7 +105,8 @@ module udma_spim_txrx
 
 	logic [1:0] s_tx_mode;
 	logic [1:0] s_rx_mode;
-	logic [1:0] s_spi_mode;
+    logic [1:0] s_spi_mode;
+    logic [1:0] r_spi_mode;
 
 	logic s_bits_done;
 
@@ -146,6 +150,38 @@ module udma_spim_txrx
 
     logic        s_transf_done;
 
+    always_comb begin : proc_spi_mode
+        case(r_spi_mode)
+            `SPI_QUAD_RX:
+            begin
+                spi_oen0_o = 1'b1;
+                spi_oen1_o = 1'b1;
+                spi_oen2_o = 1'b1;
+                spi_oen3_o = 1'b1;
+            end
+            `SPI_QUAD_TX:
+            begin
+                spi_oen0_o = 1'b1;
+                spi_oen1_o = 1'b1;
+                spi_oen2_o = 1'b1;
+                spi_oen3_o = 1'b1;
+            end
+            `SPI_STD:
+            begin
+                spi_oen0_o = 1'b0;
+                spi_oen1_o = 1'b1;
+                spi_oen2_o = 1'b1;
+                spi_oen3_o = 1'b1;
+            end
+            default:
+            begin
+                spi_oen0_o = 1'b1;
+                spi_oen1_o = 1'b1;
+                spi_oen2_o = 1'b1;
+                spi_oen3_o = 1'b1;
+            end    
+        endcase
+    end
     always_comb begin : proc_offset
         case(r_wordtransf)
             2'b00:
@@ -214,7 +250,7 @@ module udma_spim_txrx
         end
         else
         begin
-            s_data_rx[s_bit_index] = spi_sdi0_i;
+            s_data_rx[s_bit_index] = spi_sdi1_i;
         end
     end
 
@@ -658,7 +694,7 @@ module udma_spim_txrx
         	spi_sdo1_o <= 1'b0;
         	spi_sdo2_o <= 1'b0;
         	spi_sdo3_o <= 1'b0;
-        	spi_mode_o <= `SPI_STD;
+        	r_spi_mode <= `SPI_STD;
         end
         else
         begin
@@ -669,7 +705,7 @@ module udma_spim_txrx
         	   spi_sdo2_o <= s_spi_sdo2;
         	   spi_sdo3_o <= s_spi_sdo3;
             end
-        	spi_mode_o <= s_spi_mode;
+        	r_spi_mode <= s_spi_mode;
         end
     end
 
