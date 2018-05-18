@@ -1,4 +1,7 @@
 udma_qspi:
+  incdirs: [
+    rtl,
+  ]
   files: [
     rtl/udma_spim_reg_if.sv,
     rtl/udma_spim_ctrl.sv,
