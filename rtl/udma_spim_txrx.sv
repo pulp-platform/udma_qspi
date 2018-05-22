@@ -161,10 +161,10 @@ module udma_spim_txrx
             end
             `SPI_QUAD_TX:
             begin
-                spi_oen0_o = 1'b1;
-                spi_oen1_o = 1'b1;
-                spi_oen2_o = 1'b1;
-                spi_oen3_o = 1'b1;
+                spi_oen0_o = 1'b0;
+                spi_oen1_o = 1'b0;
+                spi_oen2_o = 1'b0;
+                spi_oen3_o = 1'b0;
             end
             `SPI_STD:
             begin
