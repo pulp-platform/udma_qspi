@@ -157,15 +157,21 @@ module udma_spim_ctrl
     logic        r_chk_result;
 
 
-    logic [31:0] s_replay_buffer_out;
+    logic [32:0] s_replay_buffer_out;
     logic        s_replay_buffer_out_ready;
     logic        s_replay_buffer_out_valid;
-    logic [31:0] s_replay_buffer_in;
+    logic [32:0] s_replay_buffer_in;
     logic        s_replay_buffer_in_ready;
     logic        s_replay_buffer_in_valid;
     logic        s_update_rpt;
     logic        r_is_replay;
     logic        s_clr_rpt_buf;
+
+    logic        s_first_replay;
+    logic        r_first_replay;
+
+    logic        s_set_first_reply;
+    logic        s_clr_first_reply;
 
     logic [1:0] s_wordstransf;
     logic [1:0] s_cd_wordstransf;
@@ -191,6 +197,8 @@ module udma_spim_ctrl
     assign s_cd_wait_evt     = r_is_replay ? s_replay_buffer_out[1:0]   : udma_cmd_i[1:0];
     assign s_cd_wait_cyc     = r_is_replay ? s_replay_buffer_out[7:0]   : udma_cmd_i[7:0];
     assign s_cd_wait_typ     = r_is_replay ? s_replay_buffer_out[9:8]   : udma_cmd_i[9:8];
+
+    assign s_first_replay    = s_replay_buffer_out[32];
 
     assign cfg_cpol_o = r_cfg_cpol;
     assign cfg_cpha_o = r_cfg_cpha;
@@ -232,7 +240,7 @@ module udma_spim_ctrl
 
     io_generic_fifo
     #(
-        .DATA_WIDTH(32),
+        .DATA_WIDTH(33),
         .BUFFER_DEPTH(REPLAY_BUFFER_DEPTH)
     ) i_reply_buffer (
         .clk_i     ( clk_i ),
@@ -247,7 +255,7 @@ module udma_spim_ctrl
         .ready_o   ( s_replay_buffer_in_ready  )
     );
 
-    assign s_replay_buffer_in       = r_is_replay ? s_replay_buffer_out : udma_cmd_i;
+    assign s_replay_buffer_in       = r_is_replay ? s_replay_buffer_out : {r_first_replay,udma_cmd_i};
     assign s_replay_buffer_in_valid = s_setup_replay ? udma_cmd_valid_i : (r_is_replay & (s_replay_buffer_out_ready & s_replay_buffer_out_valid));
 
   always_ff @(posedge clk_i, negedge rstn_i)
@@ -396,7 +404,8 @@ module udma_spim_ctrl
         s_cnt_start          = 1'b0;
         s_cnt_target         =  'h0;
         s_replay_buffer_out_ready = 1'b0;
-
+        s_set_first_reply    = 1'b0;
+        s_clr_first_reply    = 1'b0;
         case(state)
             IDLE:
             begin
@@ -416,8 +425,11 @@ module udma_spim_ctrl
                         end
                         else
                         begin
-                            s_update_rpt = 1'b1;
-                            s_rpt_num = r_rpt_num - 1;
+                            if(s_first_replay)
+                            begin
+                                s_update_rpt = 1'b1;
+                                s_rpt_num = r_rpt_num - 1;
+                            end
                         end
                     end
                     if(is_cmd_cfg)
@@ -536,6 +548,7 @@ module udma_spim_ctrl
                         s_update_rpt = 1'b1;
                         s_clr_rpt_buf = 1'b1;
                         s_rpt_num    = s_cd_size_long;
+                        s_set_first_reply = 1'b1;
                         state_next   = DO_REPEAT;
                     end
                     else if(is_cmd_eot)
@@ -549,6 +562,7 @@ module udma_spim_ctrl
             begin
                 if(udma_cmd_valid_i)
                 begin
+                    s_clr_first_reply = 1'b1;
                     udma_cmd_ready_o = 1'b1;
                     if(is_cmd_rpe)
                     begin
@@ -708,6 +722,7 @@ module udma_spim_ctrl
             r_chk_type  <= 0;
             r_chk       <= 0;
             r_is_replay <= 0;
+            r_first_replay <= 1'b0;
         end
         else
         begin
@@ -716,6 +731,11 @@ module udma_spim_ctrl
             r_tx_done <= tx_done_i;
             r_rx_done <= rx_done_i;
             r_is_replay <= s_is_replay;
+
+            if(s_set_first_reply)
+                r_first_replay <= 1'b1;
+            if(s_clr_first_reply)
+                r_first_replay <= 1'b0;
 
             if(s_update_chk)
             begin
