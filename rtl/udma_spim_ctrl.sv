@@ -417,7 +417,7 @@ module udma_spim_ctrl
                     else
                     begin
                         s_replay_buffer_out_ready = 1'b1;
-                        if((r_rpt_num == 0) || r_chk_result)
+                        if(((r_rpt_num == 0) && s_first_replay) || r_chk_result)
                         begin
                             s_update_chk_result = 1'b1;
                             s_chk_result = 1'b0;
