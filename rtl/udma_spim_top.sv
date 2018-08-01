@@ -119,6 +119,8 @@ module udma_spim_top
 
     localparam BUFFER_WIDTH=8;
 
+    logic  [1:0] s_status;
+
     logic        s_tx_start;
     logic [15:0] s_tx_size;
     logic        s_tx_qpi;
@@ -202,6 +204,8 @@ module udma_spim_top
     ) u_reg_if (
         .clk_i              ( sys_clk_i               ),
         .rstn_i             ( rstn_i              ),
+
+        .status_i           ( s_status            ),
 
         .cfg_data_i         ( cfg_data_i          ),
         .cfg_addr_i         ( cfg_addr_i          ),
@@ -353,6 +357,8 @@ module udma_spim_top
         .eot_o(s_spi_eot),
 
         .event_i(s_events),
+
+        .status_o(s_status),
 
         .cfg_cpol_o(s_cfg_cpol),
         .cfg_cpha_o(s_cfg_cpha),

@@ -34,6 +34,8 @@
 `define REG_CMD_CFG      5'b01010 //BASEADDR+0x28
 `define REG_CMD_INTCFG   5'b01011 //BASEADDR+0x2C
 
+`define REG_STATUS       5'b01100 //BASEADDR+0x30
+
 `define SPI_WAIT_EVT 2'b00
 `define SPI_WAIT_CYC 2'b01
 `define SPI_WAIT_GP  2'b10

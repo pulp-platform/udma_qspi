@@ -71,6 +71,8 @@ module udma_spim_reg_if #(
     input  logic [L2_AWIDTH_NOAL-1:0] cfg_tx_curr_addr_i,
     input  logic     [TRANS_SIZE-1:0] cfg_tx_bytes_left_i,
 
+    input  logic                [1:0] status_i,
+
     input  logic               [31:0] udma_cmd_i,
     input  logic                      udma_cmd_valid_i,
     input  logic                      udma_cmd_ready_i
@@ -274,6 +276,8 @@ module udma_spim_reg_if #(
             cfg_data_o[TRANS_SIZE-1:0] = cfg_tx_bytes_left_i;
         `REG_TX_CFG:
             cfg_data_o = {26'h0,cfg_tx_pending_i,cfg_tx_en_i,1'b0,2'b00,r_tx_continuous};
+        `REG_STATUS:
+            cfg_data_o = {30'h0,status_i};
         default:
             cfg_data_o = 'h0;
         endcase

@@ -75,11 +75,14 @@ module udma_spim_ctrl
     output logic                          spi_csn0_o,
     output logic                          spi_csn1_o,
     output logic                          spi_csn2_o,
-    output logic                          spi_csn3_o
+    output logic                          spi_csn3_o,
+
+    output logic   [1:0]                  status_o
 );
 
     enum logic [2:0] {IDLE,WAIT_DONE,WAIT_CHECK,WAIT_EVENT,DO_REPEAT,WAIT_CYCLE,CLEAR_CS,WAIT_ADDR} state,state_next;
 
+    enum logic [1:0] {STAT_NONE,STAT_CHECK,STAT_EOL} s_status,r_status;
     logic r_cfg_cpol;
     logic r_cfg_cpha;
     logic [7:0] r_cfg_clkdiv;
@@ -156,6 +159,7 @@ module udma_spim_ctrl
     logic        s_chk_result;
     logic        r_chk_result;
 
+    logic        s_update_status;
 
     logic [32:0] s_replay_buffer_out;
     logic        s_replay_buffer_out_ready;
@@ -204,6 +208,8 @@ module udma_spim_ctrl
     assign cfg_cpha_o = r_cfg_cpha;
 
     assign cfg_clkdiv_data_o = r_cfg_clkdiv;
+
+    assign status_o = r_status;
 
     assign s_done = r_is_ful ? ((tx_done_i | r_tx_done) & (rx_done_i | r_rx_done)) : (tx_done_i | rx_done_i);
 
@@ -406,6 +412,8 @@ module udma_spim_ctrl
         s_replay_buffer_out_ready = 1'b0;
         s_set_first_reply    = 1'b0;
         s_clr_first_reply    = 1'b0;
+        s_update_status      = 1'b0;
+        s_status             = r_status;
         case(state)
             IDLE:
             begin
@@ -419,6 +427,11 @@ module udma_spim_ctrl
                         s_replay_buffer_out_ready = 1'b1;
                         if(((r_rpt_num == 0) && s_first_replay) || r_chk_result)
                         begin
+                            s_update_status = 1'b1;
+                            if(r_chk_result)
+                                s_status        = STAT_CHECK; //matched
+                            else
+                                s_status        = STAT_EOL;   //end of loop
                             s_update_chk_result = 1'b1;
                             s_chk_result = 1'b0;
                             s_is_replay  = 1'b0;
@@ -550,6 +563,8 @@ module udma_spim_ctrl
                         s_rpt_num    = s_cd_size_long;
                         s_set_first_reply = 1'b1;
                         state_next   = DO_REPEAT;
+                        s_update_status = 1'b1;
+                        s_status = STAT_NONE;
                     end
                     else if(is_cmd_eot)
                     begin
@@ -723,6 +738,7 @@ module udma_spim_ctrl
             r_chk       <= 0;
             r_is_replay <= 0;
             r_first_replay <= 1'b0;
+            r_status    <= STAT_NONE;
         end
         else
         begin
@@ -736,6 +752,8 @@ module udma_spim_ctrl
                 r_first_replay <= 1'b1;
             if(s_clr_first_reply)
                 r_first_replay <= 1'b0;
+            if(s_update_status)
+                r_status <= s_status;
 
             if(s_update_chk)
             begin
