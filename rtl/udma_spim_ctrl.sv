@@ -127,7 +127,8 @@ module udma_spim_ctrl
     logic [15:0] s_cd_size_long;
     logic [15:0] s_cd_cmd_data;
     logic  [4:0] s_cd_size;
-    logic        s_cd_gen_eot;
+    logic        s_cd_eot_evt;
+    logic        s_cd_eot_keep_cs;
     logic  [1:0] s_cd_cfg_chk_type;
     logic  [7:0] s_cd_cs_wait;
     logic  [1:0] s_cd_wait_typ;
@@ -195,7 +196,8 @@ module udma_spim_ctrl
     assign s_cd_size_long    = r_is_replay ? s_replay_buffer_out[15:0]  : udma_cmd_i[15:0];
 
     assign s_cd_cmd_data     = r_is_replay ? s_replay_buffer_out[15:0]  : udma_cmd_i[15:0];
-    assign s_cd_gen_eot      = r_is_replay ? s_replay_buffer_out[0]     : udma_cmd_i[0];
+    assign s_cd_eot_evt      = r_is_replay ? s_replay_buffer_out[0]     : udma_cmd_i[0];
+    assign s_cd_eot_keep_cs  = r_is_replay ? s_replay_buffer_out[1]     : udma_cmd_i[1];
     assign s_cd_cfg_check    = r_is_replay ? s_replay_buffer_out[15:0]  : udma_cmd_i[15:0];
     assign s_cd_cfg_chk_type = r_is_replay ? s_replay_buffer_out[25:24] : udma_cmd_i[25:24];
     assign s_cd_wait_evt     = r_is_replay ? s_replay_buffer_out[1:0]   : udma_cmd_i[1:0];
@@ -568,8 +570,11 @@ module udma_spim_ctrl
                     end
                     else if(is_cmd_eot)
                     begin
-                        eot_o      = s_cd_gen_eot;
-                        state_next = CLEAR_CS;
+                        eot_o = s_cd_eot_evt;
+                        if(s_cd_eot_keep_cs)
+                            state_next = IDLE;
+                        else
+                            state_next = CLEAR_CS;
                     end
                 end
             end
