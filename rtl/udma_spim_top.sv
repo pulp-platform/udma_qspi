@@ -28,7 +28,7 @@ module udma_spim_top
 #(
     parameter L2_AWIDTH_NOAL = 12,
     parameter TRANS_SIZE     = 16,
-    parameter REPLAY_BUFFER_DEPTH = 5
+    parameter REPLAY_BUFFER_DEPTH = 6
 )
 (
     input  logic                      sys_clk_i,

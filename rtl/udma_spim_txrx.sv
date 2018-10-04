@@ -203,31 +203,42 @@ module udma_spim_txrx
     end
 
     always_comb begin : proc_outputs
-        if(tx_qpi_i)
-        begin
-            if(r_lsbfirst)
-            begin
-                s_spi_sdo0 = r_tx_shift_reg[s_bit_index-3];
-                s_spi_sdo1 = r_tx_shift_reg[s_bit_index-2];
-                s_spi_sdo2 = r_tx_shift_reg[s_bit_index-1];
-                s_spi_sdo3 = r_tx_shift_reg[s_bit_index];
-            end
-            else
-            begin
-                s_spi_sdo0 = r_tx_shift_reg[s_bit_index];
-                s_spi_sdo1 = r_tx_shift_reg[s_bit_index+1];
-                s_spi_sdo2 = r_tx_shift_reg[s_bit_index+2];
-                s_spi_sdo3 = r_tx_shift_reg[s_bit_index+3];
-            end
-        end
-        else
-        begin
-            s_spi_sdo0 = r_tx_shift_reg[s_bit_index];
+       if(s_tx_idle)
+         begin
+            s_spi_sdo0 = 1'b0;
             s_spi_sdo1 = 1'b0;
             s_spi_sdo2 = 1'b0;
             s_spi_sdo3 = 1'b0;
-        end
-    end
+         end
+       else
+         begin
+            if(tx_qpi_i)
+              begin
+                 if(r_lsbfirst)
+                   begin
+                      s_spi_sdo0 = r_tx_shift_reg[s_bit_index-3];
+                      s_spi_sdo1 = r_tx_shift_reg[s_bit_index-2];
+                      s_spi_sdo2 = r_tx_shift_reg[s_bit_index-1];
+                      s_spi_sdo3 = r_tx_shift_reg[s_bit_index];
+                   end
+                 else
+                   begin
+                      s_spi_sdo0 = r_tx_shift_reg[s_bit_index];
+                      s_spi_sdo1 = r_tx_shift_reg[s_bit_index+1];
+                      s_spi_sdo2 = r_tx_shift_reg[s_bit_index+2];
+                      s_spi_sdo3 = r_tx_shift_reg[s_bit_index+3];
+                   end
+              end
+            else
+              begin
+                 s_spi_sdo0 = r_tx_shift_reg[s_bit_index];
+
+                 s_spi_sdo1 = 1'b0;
+                 s_spi_sdo2 = 1'b0;
+                 s_spi_sdo3 = 1'b0;
+              end
+         end
+    end // block: proc_outputs
 
     always_comb begin : proc_input
         s_data_rx = r_rx_shift_reg;
