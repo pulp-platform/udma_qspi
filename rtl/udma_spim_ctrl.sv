@@ -9,13 +9,16 @@
 // Engineer:       Pullini Antonio - pullinia@iis.ee.ethz.ch                  //
 //                                                                            //
 // Additional contributions by:                                               //
-//                                                                            //
+//                 Igor Loi: igor.loi@greenvawes-technologies.com             //
 //                                                                            //
 // Design Name:    SPI Master Control State Machine                           //
 // Project Name:   SPI Master                                                 //
 // Language:       SystemVerilog                                              //
 //                                                                            //
 // Description:    SPI Master with full QPI support                           //
+//                                                                            //
+// logs:                                                                      //
+// 		   14/12/2018: removed unreachable state WAIT_ADDR                    //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 `include "udma_spim_defines.sv"
@@ -80,7 +83,7 @@ module udma_spim_ctrl
     output logic   [1:0]                  status_o
 );
 
-    enum logic [2:0] {IDLE,WAIT_DONE,WAIT_CHECK,WAIT_EVENT,DO_REPEAT,WAIT_CYCLE,CLEAR_CS,WAIT_ADDR} state,state_next;
+    enum logic [2:0] {IDLE,WAIT_DONE,WAIT_CHECK,WAIT_EVENT,DO_REPEAT,WAIT_CYCLE,CLEAR_CS /*,WAIT_ADDR*/ } state,state_next;
 
     enum logic [1:0] {STAT_NONE,STAT_CHECK,STAT_EOL} s_status,r_status;
     logic r_cfg_cpol;
@@ -610,7 +613,8 @@ module udma_spim_ctrl
                 udma_rx_data_valid_o = r_is_dummy ? 1'b0 : rx_data_valid_i;
                 rx_data_ready_o      = udma_rx_data_ready_i;
             end
-            WAIT_ADDR:
+            /*
+	    WAIT_ADDR:
             begin
                 if(udma_cmd_valid_i)
                 begin
@@ -618,6 +622,7 @@ module udma_spim_ctrl
                     state_next       = IDLE;
                 end
             end
+	    */
             WAIT_CHECK:
             begin
                 if(rx_done_i)
