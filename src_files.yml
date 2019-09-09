@@ -8,4 +8,19 @@ udma_qspi:
     rtl/udma_spim_txrx.sv,
     rtl/udma_spim_top.sv,
   ]
-
+  jg_slint_top_name: [
+    udma_spim_top
+  ]
+  jg_slint_elab_opt: [
+    
+  ]
+  jg_slint_postelab_cmds: [
+    "stopat -env  u_clockgen.i_clk_gate.clk_o"
+  ]
+  jg_slint_clocks: [
+    sys_clk_i,
+    "periph_clk_i -both_edges {u_clockgen.i_clk_gate.clk_o} 4 1"
+  ]
+  jg_slint_resets: [
+    ~rstn_i,
+  ]
