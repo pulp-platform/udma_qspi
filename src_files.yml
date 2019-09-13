@@ -18,8 +18,8 @@ udma_qspi:
     "stopat -env  u_clockgen.i_clk_gate.clk_o"
   ]
   jg_slint_clocks: [
+    "periph_clk_i -both_edges",
     sys_clk_i,
-    "periph_clk_i -both_edges {u_clockgen.i_clk_gate.clk_o} 4 1"
   ]
   jg_slint_resets: [
     ~rstn_i,
