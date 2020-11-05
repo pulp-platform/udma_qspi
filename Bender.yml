@@ -9,7 +9,7 @@ package:
     - "Igor Loi <igor.loi@unibo.it>"
 
 dependencies:
-  udma_core: {path: "../udma_core"} # to be updated with git repo
+  udma_core: { git: "git@github.com:micprog/udma_core.git", rev: "203f457a979810aba6c64a1c7ddf3cdee87c9207" } # To be updated with pulp-platform dependency
   common_cells: { git: "git@github.com:pulp-platform/common_cells.git", version: 1.13.1 }
   tech_cells_generic: { git: "git@github.com:pulp-platform/tech_cells_generic.git", version: 0.1.6 }
 
