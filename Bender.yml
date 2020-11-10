@@ -9,7 +9,7 @@ package:
     - "Igor Loi <igor.loi@unibo.it>"
 
 dependencies:
-  udma_core: { git: "git@github.com:pulp-platform/udma_core.git", rev: "82300ee1aae9faf6384d35ff6d6ca6ecf7f1db84" }
+  udma_core: { git: "git@github.com:pulp-platform/udma_core.git", version: 1.0.1 }
   common_cells: { git: "git@github.com:pulp-platform/common_cells.git", version: 1.13.1 }
   tech_cells_generic: { git: "git@github.com:pulp-platform/tech_cells_generic.git", version: 0.1.6 }
 
