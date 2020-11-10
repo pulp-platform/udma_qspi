@@ -9,12 +9,20 @@ package:
     - "Igor Loi <igor.loi@unibo.it>"
 
 dependencies:
-  udma_core: { git: "git@github.com:micprog/udma_core.git", rev: "203f457a979810aba6c64a1c7ddf3cdee87c9207" } # To be updated with pulp-platform dependency
+  udma_core: { git: "git@github.com:pulp-platform/udma_core.git", rev: "82300ee1aae9faf6384d35ff6d6ca6ecf7f1db84" }
   common_cells: { git: "git@github.com:pulp-platform/common_cells.git", version: 1.13.1 }
   tech_cells_generic: { git: "git@github.com:pulp-platform/tech_cells_generic.git", version: 0.1.6 }
 
 sources:
-  - rtl/udma_spim_reg_if.sv
-  - rtl/udma_spim_ctrl.sv
-  - rtl/udma_spim_txrx.sv
-  - rtl/udma_spim_top.sv
+  include_dirs:
+    - rtl
+  files:
+      # Source files grouped in levels. Files in level 0 have no dependencies on files in this
+      # package. Files in level 1 only depend on files in level 0, files in level 2 on files in
+      # levels 1 and 0, etc. Files within a level are ordered alphabetically.
+      # Level 0
+    - rtl/udma_spim_ctrl.sv
+    - rtl/udma_spim_reg_if.sv
+    - rtl/udma_spim_txrx.sv
+      # Level 1
+    - rtl/udma_spim_top.sv
