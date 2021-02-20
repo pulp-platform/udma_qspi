@@ -26,3 +26,4 @@ sources:
     - rtl/udma_spim_txrx.sv
       # Level 1
     - rtl/udma_spim_top.sv
+    - rtl/udma_qspi_wrap.sv
