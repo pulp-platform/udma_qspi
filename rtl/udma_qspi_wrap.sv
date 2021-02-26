@@ -146,8 +146,6 @@ udma_spim_top #(
 
 );
 
-assign qspi_to_pad.sck_oe = 1'b1;
-
 // invert polarity
 assign qspi_to_pad.sd0_oe = ~pad_qspi_mosi_io0_oe;
 assign qspi_to_pad.sd1_oe = ~pad_qspi_miso_io1_oe;
