@@ -154,13 +154,6 @@ assign qspi_to_pad.sd1_oe = ~pad_qspi_miso_io1_oe;
 assign qspi_to_pad.sd2_oe = ~pad_qspi_io2_oe     ;
 assign qspi_to_pad.sd3_oe = ~pad_qspi_io3_oe     ;
 
-// statically assign polarity for SPI CSi and SCLK
-assign qspi_to_pad.csn0_oe     = 1'b1;
-assign qspi_to_pad.csn1_oe     = 1'b1;
-assign qspi_to_pad.csn2_oe     = 1'b1;
-assign qspi_to_pad.csn3_oe     = 1'b1;
-
-
 // assigning unused signals
 assign rx_ch[0].stream      = '0;
 assign rx_ch[0].stream_id   = '0;
