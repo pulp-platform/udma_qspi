@@ -17,6 +17,8 @@
  */
  module udma_qspi_wrap
     import udma_pkg::udma_evt_t;
+    import pulp_io_pkg::qspi_to_pad_t;
+    import pulp_io_pkg::pad_to_qspi_t;
 (
     input  logic         sys_clk_i,
     input  logic         periph_clk_i,
@@ -39,16 +41,8 @@
     UDMA_LIN_CH.rx_out   rx_ch[ 0:0],
 
     // PAD SIGNALS CONNECTION
-	BIPAD_IF.PERIPH_SIDE PAD_QSPI_SCLK,
-	BIPAD_IF.PERIPH_SIDE PAD_QSPI_CSN0,
-    BIPAD_IF.PERIPH_SIDE PAD_QSPI_CSN1,
-    BIPAD_IF.PERIPH_SIDE PAD_QSPI_CSN2,
-    BIPAD_IF.PERIPH_SIDE PAD_QSPI_CSN3,
-
-    BIPAD_IF.PERIPH_SIDE PAD_QSPI_MOSI_IO0,
-    BIPAD_IF.PERIPH_SIDE PAD_QSPI_MISO_IO1,
-    BIPAD_IF.PERIPH_SIDE PAD_QSPI_IO2,
-    BIPAD_IF.PERIPH_SIDE PAD_QSPI_IO3
+    output  qspi_to_pad_t qspi_to_pad,
+    input   pad_to_qspi_t pad_to_qspi
 
 );
 
@@ -128,38 +122,44 @@ udma_spim_top #(
     .data_tx_valid_i     ( tx_ch[0].valid        ),
     .data_tx_ready_o     ( tx_ch[0].ready        ),
 
-    .spi_clk_o           ( PAD_QSPI_SCLK.OUT     ),
-    .spi_csn0_o          ( PAD_QSPI_CSN0.OUT     ),
-    .spi_csn1_o          ( PAD_QSPI_CSN1.OUT     ),
-    .spi_csn2_o          ( PAD_QSPI_CSN2.OUT     ),
-    .spi_csn3_o          ( PAD_QSPI_CSN3.OUT     ),
+    .spi_clk_o           ( qspi_to_pad.sck_o     ),
+
+    .spi_csn0_o          ( qspi_to_pad.csn0_o    ),
+    .spi_csn1_o          ( qspi_to_pad.csn1_o    ),
+    .spi_csn2_o          ( qspi_to_pad.csn2_o    ),
+    .spi_csn3_o          ( qspi_to_pad.csn3_o    ),
+
     .spi_oen0_o          ( pad_qspi_mosi_io0_oe  ),
     .spi_oen1_o          ( pad_qspi_miso_io1_oe  ),
     .spi_oen2_o          ( pad_qspi_io2_oe       ),
     .spi_oen3_o          ( pad_qspi_io3_oe       ),
-    .spi_sdo0_o          ( PAD_QSPI_MOSI_IO0.OUT ),
-    .spi_sdo1_o          ( PAD_QSPI_MISO_IO1.OUT ),
-    .spi_sdo2_o          ( PAD_QSPI_IO2.OUT      ),
-    .spi_sdo3_o          ( PAD_QSPI_IO3.OUT      ),
-    .spi_sdi0_i          ( PAD_QSPI_MOSI_IO0.IN  ),
-    .spi_sdi1_i          ( PAD_QSPI_MISO_IO1.IN  ),
-    .spi_sdi2_i          ( PAD_QSPI_IO2.IN       ),
-    .spi_sdi3_i          ( PAD_QSPI_IO3.IN       )
+
+    .spi_sdo0_o          ( qspi_to_pad.sd0_o     ),
+    .spi_sdo1_o          ( qspi_to_pad.sd1_o     ),
+    .spi_sdo2_o          ( qspi_to_pad.sd2_o     ),
+    .spi_sdo3_o          ( qspi_to_pad.sd3_o     ),
+    
+    .spi_sdi0_i          ( pad_to_qspi.sd0_i     ),
+    .spi_sdi1_i          ( pad_to_qspi.sd1_i     ),
+    .spi_sdi2_i          ( pad_to_qspi.sd2_i     ),
+    .spi_sdi3_i          ( pad_to_qspi.sd3_i     )
 
 );
 
+assign qspi_to_pad.sck_oe = 1'b1;
+
 // invert polarity
-assign PAD_QSPI_MOSI_IO0.OE = ~pad_qspi_mosi_io0_oe;
-assign PAD_QSPI_MISO_IO1.OE = ~pad_qspi_miso_io1_oe;
-assign PAD_QSPI_IO2.OE      = ~pad_qspi_io2_oe     ;
-assign PAD_QSPI_IO3.OE      = ~pad_qspi_io3_oe     ;
+assign qspi_to_pad.sd0_oe = ~pad_qspi_mosi_io0_oe;
+assign qspi_to_pad.sd1_oe = ~pad_qspi_miso_io1_oe;
+assign qspi_to_pad.sd2_oe = ~pad_qspi_io2_oe     ;
+assign qspi_to_pad.sd3_oe = ~pad_qspi_io3_oe     ;
 
 // statically assign polarity for SPI CSi and SCLK
-assign PAD_QSPI_CSN0.OE     = 1'b1;
-assign PAD_QSPI_CSN1.OE     = 1'b1;
-assign PAD_QSPI_CSN2.OE     = 1'b1;
-assign PAD_QSPI_CSN3.OE     = 1'b1;
-assign PAD_QSPI_SCLK.OE     = 1'b1;
+assign qspi_to_pad.csn0_oe     = 1'b1;
+assign qspi_to_pad.csn1_oe     = 1'b1;
+assign qspi_to_pad.csn2_oe     = 1'b1;
+assign qspi_to_pad.csn3_oe     = 1'b1;
+
 
 // assigning unused signals
 assign rx_ch[0].stream      = '0;
