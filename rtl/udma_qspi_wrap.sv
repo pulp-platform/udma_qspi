@@ -17,8 +17,8 @@
  */
  module udma_qspi_wrap
     import udma_pkg::udma_evt_t;
-    import pulp_io_pkg::qspi_to_pad_t;
-    import pulp_io_pkg::pad_to_qspi_t;
+    import qspi_pkg::qspi_to_pad_t;
+    import qspi_pkg::pad_to_qspi_t;
 (
     input  logic         sys_clk_i,
     input  logic         periph_clk_i,
