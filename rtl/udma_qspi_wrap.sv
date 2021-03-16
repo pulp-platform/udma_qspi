@@ -31,7 +31,6 @@
 	output logic         cfg_ready_o,
     output logic  [31:0] cfg_data_o,
 
-    input  udma_evt_t    ch_events_i,
     output udma_evt_t    events_o,
     input  udma_evt_t    events_i,
 
@@ -156,8 +155,12 @@ assign qspi_to_pad.sd3_oe = ~pad_qspi_io3_oe     ;
 assign rx_ch[0].stream      = '0;
 assign rx_ch[0].stream_id   = '0;
 assign rx_ch[0].destination = '0;
-assign tx_ch[0].destination = '0;
 
-assign events_o[2:0] = ch_events_i[2:0];
+assign tx_ch[0].destination = '0;
+assign cmd_ch[0].destination = '0;
+
+assign events_o[0] = rx_ch[0].events;
+assign events_o[1] = tx_ch[0].events;
+assign events_o[2] = cmd_ch[0].events;
 
 endmodule : udma_qspi_wrap
