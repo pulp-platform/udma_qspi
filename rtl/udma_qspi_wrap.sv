@@ -104,6 +104,7 @@ udma_spim_top #(
     .data_rx_o           ( rx_ch[0].data         ),
     .data_rx_valid_o     ( rx_ch[0].valid        ),
     .data_rx_ready_i     ( rx_ch[0].ready        ),
+    .cfg_rx_dest_o       ( rx_ch[0].destination  ),
 
     .cfg_tx_startaddr_o  ( tx_ch[0].startaddr    ),
     .cfg_tx_size_o       ( tx_ch[0].size         ),
@@ -154,7 +155,7 @@ assign qspi_to_pad.sd3_oe = ~pad_qspi_io3_oe     ;
 // assigning unused signals
 assign rx_ch[0].stream      = '0;
 assign rx_ch[0].stream_id   = '0;
-assign rx_ch[0].destination = '0;
+//assign rx_ch[0].destination = '0;
 
 assign tx_ch[0].destination = '0;
 assign cmd_ch[0].destination = '0;
