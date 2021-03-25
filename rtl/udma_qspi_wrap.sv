@@ -24,6 +24,9 @@
     input  logic         periph_clk_i,
 	input  logic         rstn_i,
 
+    input  logic         dft_test_mode_i,
+    input  logic         dft_cg_enable_i,
+
 	input  logic  [31:0] cfg_data_i,
 	input  logic   [4:0] cfg_addr_i,
 	input  logic         cfg_valid_i,
