@@ -166,5 +166,6 @@ assign cmd_ch[0].destination = '0;
 assign events_o[0] = rx_ch[0].events;
 assign events_o[1] = tx_ch[0].events;
 assign events_o[2] = cmd_ch[0].events;
+//assign events_o[3] = '0;
 
 endmodule : udma_qspi_wrap
