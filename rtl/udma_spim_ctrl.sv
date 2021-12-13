@@ -34,6 +34,8 @@ module udma_spim_ctrl
 
     input  logic   [3:0]                  event_i,
 
+    input  logic                          cfg_avs_i,
+
     output logic                          cfg_cpol_o,
     output logic                          cfg_cpha_o,
 

@@ -23,39 +23,42 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-`include "udma_spim_defines.sv" 
+`include "udma_spim_defines.sv"
 
 module udma_spim_txrx
 (
-	input  logic         clk_i,
-	input  logic         rstn_i,
-        
-	input  logic         cfg_cpol_i,
-	input  logic         cfg_cpha_i,
+  input  logic         clk_i,
+  input  logic         rstn_i,
 
-	input  logic         tx_start_i,
-	input  logic [15:0]  tx_size_i,
+  input  logic         cfg_avs_i,
+
+  input  logic         cfg_cpol_i,
+  input  logic         cfg_cpha_i,
+
+  input  logic         tx_start_i,
+  input  logic [15:0]  tx_size_i,
     input  logic         tx_qpi_i,
     input  logic  [4:0]  tx_bitsword_i,
     input  logic  [1:0]  tx_wordtransf_i,
     input  logic         tx_lsbfirst_i,
-	output logic         tx_done_o,
-	input  logic [31:0]  tx_data_i,
-	input  logic         tx_data_valid_i,
-	output logic         tx_data_ready_o,
-        
-	input  logic         rx_start_i,
-	input  logic [15:0]  rx_size_i,
+  output logic         tx_done_o,
+  input  logic [31:0]  tx_data_i,
+  input  logic         tx_data_valid_i,
+  output logic         tx_data_ready_o,
+
+  input  logic         rx_start_i,
+  input  logic [15:0]  rx_size_i,
     input  logic         rx_qpi_i,
     input  logic  [4:0]  rx_bitsword_i,
     input  logic  [1:0]  rx_wordtransf_i,
     input  logic         rx_lsbfirst_i,
-	output logic         rx_done_o,
-	output logic [31:0]  rx_data_o,
-	output logic         rx_data_valid_o,
-	input  logic         rx_data_ready_i,
-        
-	output logic         spi_clk_o,
+  output logic         rx_done_o,
+  output logic [31:0]  rx_data_o,
+  output logic         rx_data_valid_o,
+  input  logic         rx_data_ready_i,
+
+  output logic         slv_req_o,
+  output logic         spi_clk_o,
     output logic         spi_oen0_o,
     output logic         spi_oen1_o,
     output logic         spi_oen2_o,
@@ -64,10 +67,10 @@ module udma_spim_txrx
     output logic         spi_sdo1_o,
     output logic         spi_sdo2_o,
     output logic         spi_sdo3_o,
-	input  logic         spi_sdi0_i,
-	input  logic         spi_sdi1_i,
-	input  logic         spi_sdi2_i,
-	input  logic         spi_sdi3_i
+  input  logic         spi_sdi0_i,
+  input  logic         spi_sdi1_i,
+  input  logic         spi_sdi2_i,
+  input  logic         spi_sdi3_i
 );
 
     enum logic [3:0] {TX_IDLE,TX_SEND,TX_WAIT_DATA} tx_state,tx_state_next;
@@ -84,31 +87,31 @@ module udma_spim_txrx
     logic [31:0] s_rx_shift_reg;
     logic [31:0] r_rx_shift_reg;
 
-	logic        s_tx_clken; 
-	logic        s_rx_clken; 
-	logic        r_rx_clken;
+  logic        s_tx_clken;
+  logic        s_rx_clken;
+  logic        r_rx_clken;
 
     logic        r_tx_is_last;
     logic        r_rx_is_last;
     logic        s_tx_is_last;
     logic        s_rx_is_last;
 
-	logic        s_tx_sample_in;
-	logic        s_sample_rx_in;
+  logic        s_tx_sample_in;
+  logic        s_sample_rx_in;
 
-	logic        s_tx_driving;
+  logic        s_tx_driving;
 
-	logic s_spi_sdo0;
-	logic s_spi_sdo1;
-	logic s_spi_sdo2;
-	logic s_spi_sdo3;
+  logic s_spi_sdo0;
+  logic s_spi_sdo1;
+  logic s_spi_sdo2;
+  logic s_spi_sdo3;
 
-	logic [1:0] s_tx_mode;
-	logic [1:0] s_rx_mode;
+  logic [1:0] s_tx_mode;
+  logic [1:0] s_rx_mode;
     logic [1:0] s_spi_mode;
     logic [1:0] r_spi_mode;
 
-	logic s_bits_done;
+  logic s_bits_done;
 
     logic s_rx_idle;
     logic s_tx_idle;
@@ -116,10 +119,13 @@ module udma_spim_txrx
     logic s_is_ful;
     logic r_is_ful;
 
+  logic   s_slv_req;
+  logic   r_slv_req;
+
     //logic r_is_qpi;
 
-	logic s_spi_clk;
-	logic s_spi_clk_inv;
+  logic s_spi_clk;
+  logic s_spi_clk_inv;
     logic s_clken;
 
     logic       r_lsbfirst;
@@ -179,7 +185,7 @@ module udma_spim_txrx
                 spi_oen1_o = 1'b1;
                 spi_oen2_o = 1'b1;
                 spi_oen3_o = 1'b1;
-            end    
+            end
         endcase
     end
     always_comb begin : proc_offset
@@ -198,17 +204,27 @@ module udma_spim_txrx
     always_comb begin : proc_index
         if(r_lsbfirst)
             s_bit_index = r_bit_offset + r_counter_bits;
-        else    
+        else
             s_bit_index = r_bit_offset + r_bitsword - r_counter_bits;
     end
 
     always_comb begin : proc_outputs
        if(s_tx_idle)
          begin
-            s_spi_sdo0 = 1'b0;
-            s_spi_sdo1 = 1'b0;
-            s_spi_sdo2 = 1'b0;
-            s_spi_sdo3 = 1'b0;
+           if(cfg_avs_i)
+             begin
+               s_spi_sdo0 = 1'b1;
+               s_spi_sdo1 = 1'b0;
+               s_spi_sdo2 = 1'b0;
+               s_spi_sdo3 = 1'b0;
+             end
+           else
+             begin
+               s_spi_sdo0 = 1'b0;
+               s_spi_sdo1 = 1'b0;
+               s_spi_sdo2 = 1'b0;
+               s_spi_sdo3 = 1'b0;
+             end
          end
        else
          begin
@@ -242,6 +258,7 @@ module udma_spim_txrx
 
     always_comb begin : proc_input
         s_data_rx = r_rx_shift_reg;
+        s_slv_req = r_slv_req;
         if(rx_qpi_i)
         begin
             if(r_lsbfirst)
@@ -262,6 +279,7 @@ module udma_spim_txrx
         else
         begin
             s_data_rx[s_bit_index] = spi_sdi1_i;
+            s_slv_req              = ~spi_sdi1_i;
         end
     end
 
@@ -274,14 +292,16 @@ module udma_spim_txrx
 
     assign s_is_ful = (tx_start_i & rx_start_i) | r_is_ful;
 
+    assign slv_req_o = r_slv_req;
+
 `ifndef PULP_FPGA_EMUL
-	pulp_clock_gating u_outclkgte_cpol
-	(
-    	.clk_i(clk_i),
-    	.en_i(s_clken),
-    	.test_en_i(1'b0),
-    	.clk_o(s_spi_clk_cpha0)
-	);
+  pulp_clock_gating u_outclkgte_cpol
+  (
+      .clk_i(clk_i),
+      .en_i(s_clken),
+      .test_en_i(1'b0),
+      .clk_o(s_spi_clk_cpha0)
+  );
 `else
     logic     clk_en_cpha0;
     always_ff @(negedge clk_i)
@@ -294,7 +314,7 @@ module udma_spim_txrx
         .clk_i(clk_i),
         .clk_o(s_clk_inv)
     );
-      
+
 `ifndef PULP_FPGA_EMUL
     pulp_clock_gating u_outclkgte_cpha
     (
@@ -322,33 +342,33 @@ module udma_spim_txrx
     assign s_spi_clk = ~cfg_cpha_i ? s_spi_clk_cpha0 : s_spi_clk_cpha1;
 `endif
 
-	pulp_clock_inverter u_clkinv_cpol
-	(
-   		.clk_i(s_spi_clk),
-   		.clk_o(s_spi_clk_inv)
+  pulp_clock_inverter u_clkinv_cpol
+  (
+      .clk_i(s_spi_clk),
+      .clk_o(s_spi_clk_inv)
     );
-      
+
 `ifndef PULP_FPGA_EMUL
-	pulp_clock_mux2 u_clockmux_cpol    
-  	(
-   		.clk0_i(s_spi_clk),
-   		.clk1_i(s_spi_clk_inv),
-   		.clk_sel_i(cfg_cpol_i),
-   		.clk_o(spi_clk_o)
+  pulp_clock_mux2 u_clockmux_cpol
+    (
+      .clk0_i(s_spi_clk),
+      .clk1_i(s_spi_clk_inv),
+      .clk_sel_i(cfg_cpol_i),
+      .clk_o(spi_clk_o)
     );
 `else
     assign spi_clk_o = ~cfg_cpol_i ? s_spi_clk : s_spi_clk_inv;
 `endif
 
     always_comb begin : proc_TX_SM
-    	tx_state_next       = tx_state;
+      tx_state_next       = tx_state;
         tx_data_ready_o     = 1'b0;
         tx_done_o           = 1'b0;
-    	s_tx_clken          = 1'b0;
-    	s_tx_sample_in      = 1'b0;
-    	s_tx_shift_reg      = r_tx_shift_reg;
-    	s_tx_driving        = 1'b0;
-    	s_tx_mode           = `SPI_QUAD_RX;
+      s_tx_clken          = 1'b0;
+      s_tx_sample_in      = 1'b0;
+      s_tx_shift_reg      = r_tx_shift_reg;
+      s_tx_driving        = 1'b0;
+      s_tx_mode           = `SPI_QUAD_RX;
         s_tx_idle           = 1'b0;
         s_tx_is_last        = r_tx_is_last;
         s_tx_counter_hi     = r_counter_hi;
@@ -357,36 +377,36 @@ module udma_spim_txrx
         s_tx_sample_hi      = 1'b0;
         s_tx_sample_bits    = 1'b0;
         s_tx_sample_transf  = 1'b0;
-    	case(tx_state)
-    		TX_IDLE:
-    		begin
-    			if(tx_start_i)
-    			begin
+      case(tx_state)
+        TX_IDLE:
+        begin
+          if(tx_start_i)
+          begin
                     s_tx_counter_bits = tx_qpi_i ? 'h3 : 'h0;
                     s_tx_sample_bits  = 1'b1;
                     if (tx_size_i == 0)
                         s_tx_is_last = 1'b1;
                     else
                         s_tx_is_last = 1'b0;
-    				s_tx_driving   = 1'b1;
-    				s_tx_sample_in = 1'b1;
-    				if(tx_data_valid_i)
-    				begin
-				    	tx_data_ready_o = 1'b1;
-    					tx_state_next = TX_SEND; 
-    					s_tx_shift_reg   = tx_data_i;
-    				end
-    				else
-    					tx_state_next = TX_WAIT_DATA;
-    			end
+            s_tx_driving   = 1'b1;
+            s_tx_sample_in = 1'b1;
+            if(tx_data_valid_i)
+            begin
+              tx_data_ready_o = 1'b1;
+              tx_state_next = TX_SEND;
+              s_tx_shift_reg   = tx_data_i;
+            end
+            else
+              tx_state_next = TX_WAIT_DATA;
+          end
                 else
                     s_tx_idle      = 1'b1;
-    		end
-    		TX_SEND:
-    		begin
-		    	s_tx_driving = 1'b1;
-    			s_tx_clken   = 1'b1;
-    			s_tx_mode = tx_qpi_i ? `SPI_QUAD_TX : `SPI_STD;
+        end
+        TX_SEND:
+        begin
+          s_tx_driving = 1'b1;
+          s_tx_clken   = 1'b1;
+          s_tx_mode = tx_qpi_i ? `SPI_QUAD_TX : `SPI_STD;
 
                 s_tx_sample_bits = 1'b1;
 
@@ -414,84 +434,84 @@ module udma_spim_txrx
                         s_tx_counter_transf = r_counter_transf + 1;
                 end
 
-    			if(s_bits_done && (r_counter_hi==0))
-    			begin
+          if(s_bits_done && (r_counter_hi==0))
+          begin
                     if (r_tx_is_last)
                     begin
-                        s_tx_is_last       = 1'b0; 
-        				tx_done_o = 1'b1;
+                        s_tx_is_last       = 1'b0;
+                tx_done_o = 1'b1;
                         if(tx_start_i)
-    				    begin
-    					   s_tx_sample_in = 1'b1;
-    					   if(tx_data_valid_i)
-    					   begin
-					    	  tx_data_ready_o = 1'b1;
-    						  tx_state_next = TX_SEND; 
-		  					  s_tx_shift_reg   = tx_data_i;
-    					   end
-    					   else
-    						  tx_state_next = TX_WAIT_DATA;
-    				    end
-    				    else
-    					   tx_state_next = TX_IDLE;
+                begin
+                 s_tx_sample_in = 1'b1;
+                 if(tx_data_valid_i)
+                 begin
+                  tx_data_ready_o = 1'b1;
+                  tx_state_next = TX_SEND;
+                  s_tx_shift_reg   = tx_data_i;
+                 end
+                 else
+                  tx_state_next = TX_WAIT_DATA;
+                end
+                else
+                 tx_state_next = TX_IDLE;
                     end
                     else
                     begin
-                        s_tx_is_last       = 1'b1; 
+                        s_tx_is_last       = 1'b1;
                         if(s_transf_done)
                         begin
                             if(tx_data_valid_i)
                             begin
                                 tx_data_ready_o = 1'b1;
-                                tx_state_next   = TX_SEND; 
+                                tx_state_next   = TX_SEND;
                                 s_tx_shift_reg  = tx_data_i;
                             end
                             else
                                 tx_state_next = TX_WAIT_DATA;
                         end
                     end
-    			end
-    			else if (s_bits_done)
-    			begin
+          end
+          else if (s_bits_done)
+          begin
                     s_tx_sample_hi  = 1'b1;
-    				s_tx_counter_hi = r_counter_hi -1;
+            s_tx_counter_hi = r_counter_hi -1;
                     if(s_transf_done)
                     begin
-       					if(tx_data_valid_i)
-   	    				begin
+                if(tx_data_valid_i)
+                begin
                             tx_data_ready_o = 1'b1;
-                            tx_state_next   = TX_SEND; 
-	  	                    s_tx_shift_reg  = tx_data_i;
-   					    end
-   					    else
-   						   tx_state_next = TX_WAIT_DATA;
+                            tx_state_next   = TX_SEND;
+                          s_tx_shift_reg  = tx_data_i;
+                end
+                else
+                 tx_state_next = TX_WAIT_DATA;
                     end
-    			end
-    		end
-    		TX_WAIT_DATA:
-    		begin
-		    	s_tx_driving = 1'b1;
-    			s_tx_mode    = tx_qpi_i ? `SPI_QUAD_TX : `SPI_STD;
-    			if(tx_data_valid_i)
-    			begin
-			    	tx_data_ready_o = 1'b1;
-    				tx_state_next = TX_SEND;
-  					s_tx_shift_reg   = tx_data_i;
-  				end
-    		end
-    	endcase // tx_state
-    
+          end
+        end
+        TX_WAIT_DATA:
+        begin
+          s_tx_driving = 1'b1;
+          s_tx_mode    = tx_qpi_i ? `SPI_QUAD_TX : `SPI_STD;
+          if(tx_data_valid_i)
+          begin
+            tx_data_ready_o = 1'b1;
+            tx_state_next = TX_SEND;
+            s_tx_shift_reg   = tx_data_i;
+          end
+        end
+      endcase // tx_state
+
     end
 
     always_comb begin : proc_RX_SM
-    	rx_state_next       = rx_state;
-    	s_rx_clken          = 1'b0;
-		rx_done_o           = 1'b0;
-		rx_data_o           =  'h0;
-		rx_data_valid_o     = 1'b0;
-		s_rx_mode           = `SPI_QUAD_RX;
-		s_sample_rx_in      = 1'b0;
-		s_rx_counter_hi     = r_counter_hi;
+      rx_state_next       = rx_state;
+      s_rx_clken          = 1'b0;
+    rx_done_o           = 1'b0;
+    rx_data_o           =  'h0;
+    rx_data_valid_o     = 1'b0;
+    s_rx_mode           = `SPI_QUAD_RX;
+    s_sample_rx_in      = 1'b0;
+    s_rx_counter_hi     = r_counter_hi;
         s_rx_counter_bits   = r_counter_bits;
         s_rx_counter_transf = r_counter_transf;
         s_rx_shift_reg      = r_rx_shift_reg;
@@ -500,14 +520,14 @@ module udma_spim_txrx
         s_rx_sample_hi      = 1'b0;
         s_rx_sample_bits    = 1'b0;
         s_rx_sample_transf  = 1'b0;
-    	case(rx_state)
-    		RX_IDLE:
-    		begin
-    			if(rx_start_i)
-    			begin
+      case(rx_state)
+        RX_IDLE:
+        begin
+          if(rx_start_i)
+          begin
                     s_rx_mode      = rx_qpi_i ? `SPI_QUAD_RX : `SPI_STD;
-    				s_sample_rx_in = 1'b1;
-   					rx_state_next  = RX_RECEIVE;
+            s_sample_rx_in = 1'b1;
+            rx_state_next  = RX_RECEIVE;
                     s_rx_shift_reg = r_rx_shift_reg;
                     s_rx_counter_bits = rx_qpi_i ? 'h3 : 'h0;
                     s_rx_sample_bits  = 1'b1;
@@ -515,14 +535,14 @@ module udma_spim_txrx
                         s_rx_is_last = 1'b1;
                     else
                         s_rx_is_last = 1'b0;
-    			end
+          end
                 else
                     s_rx_idle      = 1'b1;
-    		end
-    		RX_RECEIVE:
-    		begin
+        end
+        RX_RECEIVE:
+        begin
                 s_rx_mode        = rx_qpi_i ? `SPI_QUAD_RX : `SPI_STD;
-    			s_rx_clken       = 1'b1;
+          s_rx_clken       = 1'b1;
                 s_rx_sample_bits = 1'b1;
                 s_rx_shift_reg   = s_data_rx;
                 if (!s_is_ful || (s_is_ful && s_tx_clken))
@@ -540,52 +560,52 @@ module udma_spim_txrx
                             s_rx_counter_bits = r_counter_bits + 1;
                     end
 
-    			    if(r_rx_clken)
-    			    begin
-	    		    	if(s_bits_done)
-    			    	begin
+              if(r_rx_clken)
+              begin
+                if(s_bits_done)
+                begin
                             s_rx_sample_transf = 1'b1;
                             if(r_counter_transf == r_wordtransf)
                             begin
-    			    		   rx_data_o           = s_rx_shift_reg;
-    			    		   rx_data_valid_o     = 1'b1;
+                     rx_data_o           = s_rx_shift_reg;
+                     rx_data_valid_o     = 1'b1;
                                s_rx_counter_transf = 0;
                             end
                             else
                             begin
                                 s_rx_counter_transf = r_counter_transf + 1;
                             end
-    			    	end
-                        
-	    		    	if(s_bits_done && (r_counter_hi==0))
-    			    	begin
+                end
+
+                if(s_bits_done && (r_counter_hi==0))
+                begin
                             if (r_rx_is_last)
                             begin
                                 s_rx_is_last = 1'b0;
-    			    	        rx_done_o = 1'b1;
-	    		    	        if(rx_start_i)
-    			    	        begin
-    			    	            s_sample_rx_in = 1'b1;
-                                    rx_state_next  = RX_RECEIVE; 
+                        rx_done_o = 1'b1;
+                        if(rx_start_i)
+                        begin
+                            s_sample_rx_in = 1'b1;
+                                    rx_state_next  = RX_RECEIVE;
                                 end
                                 else
                                     rx_state_next = RX_IDLE;
                             end
                             else
                             begin
-                                s_rx_is_last       = 1'b1; 
+                                s_rx_is_last       = 1'b1;
                             end
-    			    	end
-	    		    	else if (s_bits_done)
-    			    	begin
-                            s_rx_sample_hi  = 1'b1;
-    			    		s_rx_counter_hi = r_counter_hi -1;
-    			    	end
-    			    end
                 end
-    		end
-    	endcase // rx_state
-    
+                else if (s_bits_done)
+                begin
+                            s_rx_sample_hi  = 1'b1;
+                  s_rx_counter_hi = r_counter_hi -1;
+                end
+              end
+                end
+        end
+      endcase // rx_state
+
     end
 
     always_ff @(posedge clk_i, negedge rstn_i)
@@ -633,10 +653,11 @@ module udma_spim_txrx
             r_bitsword       <=  'h0;
             r_wordtransf     <=  'h0;
             r_bit_offset     <=  'h0;
+            r_slv_req        <= 1'b0;
         end
         else
         begin
-        	r_rx_clken     <= s_rx_clken;
+          r_rx_clken     <= s_rx_clken;
             r_rx_shift_reg <= s_rx_shift_reg;
             r_tx_shift_reg <= s_tx_shift_reg;
 
@@ -657,8 +678,12 @@ module udma_spim_txrx
 
             if (tx_start_i && rx_start_i)
                 r_is_ful  <= 1'b1;
-            else if (s_tx_idle && s_rx_idle)
+            else if (s_tx_idle && s_rx_idle) begin
                 r_is_ful  <= 1'b0;
+                if (cfg_avs_i == 1'b1) begin
+                  r_slv_req <= s_slv_req;
+                end
+            end                  
 
             if(s_tx_sample_in)
             begin
@@ -673,24 +698,24 @@ module udma_spim_txrx
                 r_bitsword   <= rx_bitsword_i;
             end
 
-        	if(s_tx_sample_in)
-        	begin
+          if(s_tx_sample_in)
+          begin
                 if (tx_size_i == 0)
                     r_counter_hi   <= 'h0;
                 else
                     r_counter_hi   <= tx_size_i - 1;
-        	end
+          end
             else if(s_sample_rx_in)
-        	begin
+          begin
                 if (rx_size_i == 0)
                     r_counter_hi   <= 'h0;
                 else
                     r_counter_hi   <= rx_size_i - 1;
-        	end
-        	else
+          end
+          else
             begin
                 if(s_tx_sample_hi)
-        		  r_counter_hi <= s_tx_counter_hi;
+              r_counter_hi <= s_tx_counter_hi;
                 else if(s_rx_sample_hi)
                   r_counter_hi <= s_rx_counter_hi;
             end
@@ -701,22 +726,22 @@ module udma_spim_txrx
     begin
         if (rstn_i == 1'b0)
         begin
-        	spi_sdo0_o <= 1'b0;
-        	spi_sdo1_o <= 1'b0;
-        	spi_sdo2_o <= 1'b0;
-        	spi_sdo3_o <= 1'b0;
-        	r_spi_mode <= `SPI_STD;
+          spi_sdo0_o <= 1'b0;
+          spi_sdo1_o <= 1'b0;
+          spi_sdo2_o <= 1'b0;
+          spi_sdo3_o <= 1'b0;
+          r_spi_mode <= `SPI_STD;
         end
         else
         begin
-        	spi_sdo0_o <= s_spi_sdo0;
+          spi_sdo0_o <= s_spi_sdo0;
             if (tx_qpi_i)
             begin
-        	   spi_sdo1_o <= s_spi_sdo1;
-        	   spi_sdo2_o <= s_spi_sdo2;
-        	   spi_sdo3_o <= s_spi_sdo3;
+             spi_sdo1_o <= s_spi_sdo1;
+             spi_sdo2_o <= s_spi_sdo2;
+             spi_sdo3_o <= s_spi_sdo3;
             end
-        	r_spi_mode <= s_spi_mode;
+          r_spi_mode <= s_spi_mode;
         end
     end
 

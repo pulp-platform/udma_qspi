@@ -23,7 +23,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 
-module udma_spim_top 
+module udma_spim_top
 #(
     parameter L2_AWIDTH_NOAL = 12,
     parameter TRANS_SIZE     = 16,
@@ -38,6 +38,7 @@ module udma_spim_top
     input  logic                      dft_cg_enable_i,
 
     output logic                      spi_eot_o,
+    output logic                      spi_req_o,
 
     input  logic                [3:0] spi_event_i,
 
@@ -84,14 +85,14 @@ module udma_spim_top
     input  logic               [31:0] cmd_i,
     input  logic                      cmd_valid_i,
     output logic                      cmd_ready_o,
-             
+
     output logic                      data_tx_req_o,
     input  logic                      data_tx_gnt_i,
     output logic                [1:0] data_tx_datasize_o,
     input  logic               [31:0] data_tx_i,
     input  logic                      data_tx_valid_i,
     output logic                      data_tx_ready_o,
-             
+
     output logic                [1:0] data_rx_datasize_o,
     output logic               [31:0] data_rx_o,
     output logic                      data_rx_valid_o,
@@ -119,6 +120,7 @@ module udma_spim_top
     localparam BUFFER_WIDTH=8;
 
     logic  [1:0] s_status;
+    logic        s_cfg_avs;
 
     logic        s_tx_start;
     logic [15:0] s_tx_size;
@@ -167,10 +169,11 @@ module udma_spim_top
     logic       s_spi_eot;
     logic       s_cfg_cpol;
     logic       s_cfg_cpha;
+    logic       s_slv_req;
 
     logic    s_tx_customsize;
     logic    s_rx_customsize;
-    
+
     logic  [4:0]  s_tx_bitsword;
     logic  [1:0]  s_tx_wordtransf;
     logic         s_tx_lsbfirst;
@@ -204,6 +207,7 @@ module udma_spim_top
         .clk_i              ( sys_clk_i               ),
         .rstn_i             ( rstn_i              ),
 
+        .cfg_avs_o          ( s_cfg_avs           ),
         .status_i           ( s_status            ),
 
         .cfg_data_i         ( cfg_data_i          ),
@@ -249,7 +253,7 @@ module udma_spim_top
         .udma_cmd_valid_i   ( s_spi_cmd_valid     ),
         .udma_cmd_ready_i   ( s_spi_cmd_ready     )
     );
-    
+
     udma_clkgen u_clockgen
     (
         .clk_i           ( periph_clk_i    ),
@@ -270,8 +274,8 @@ module udma_spim_top
     //command TX FIFO
     udma_dc_fifo #(32,BUFFER_WIDTH) u_dc_cmd
     (
-        .dst_clk_i          ( s_clk_spi         ),   
-        .dst_rstn_i         ( rstn_i            ),  
+        .dst_clk_i          ( s_clk_spi         ),
+        .dst_rstn_i         ( rstn_i            ),
         .dst_data_o         ( s_udma_cmd        ),
         .dst_valid_o        ( s_udma_cmd_valid  ),
         .dst_ready_i        ( s_udma_cmd_ready  ),
@@ -302,8 +306,8 @@ module udma_spim_top
     //data TX FIFO
     udma_dc_fifo #(32,BUFFER_WIDTH) u_dc_tx
     (
-        .dst_clk_i          ( s_clk_spi            ),   
-        .dst_rstn_i         ( rstn_i               ),  
+        .dst_clk_i          ( s_clk_spi            ),
+        .dst_rstn_i         ( rstn_i               ),
         .dst_data_o         ( s_udma_tx_data       ),
         .dst_valid_o        ( s_udma_tx_data_valid ),
         .dst_ready_i        ( s_udma_tx_data_ready ),
@@ -340,8 +344,8 @@ module udma_spim_top
         .dst_data_o         ( data_rx_o            ),
         .dst_valid_o        ( data_rx_valid_o      ),
         .dst_ready_i        ( data_rx_ready_i      ),
-        .src_clk_i          ( s_clk_spi            ),  
-        .src_rstn_i         ( rstn_i               ),  
+        .src_clk_i          ( s_clk_spi            ),
+        .src_rstn_i         ( rstn_i               ),
         .src_data_i         ( s_udma_rx_data       ),
         .src_valid_i        ( s_udma_rx_data_valid ),
         .src_ready_o        ( s_udma_rx_data_ready )
@@ -358,6 +362,7 @@ module udma_spim_top
         .event_i(s_events),
 
         .status_o(s_status),
+        .cfg_avs_i(s_cfg_avs),
 
         .cfg_cpol_o(s_cfg_cpol),
         .cfg_cpha_o(s_cfg_cpha),
@@ -410,6 +415,8 @@ module udma_spim_top
         .clk_i(s_clk_spi),
         .rstn_i(rstn_i),
 
+        .cfg_avs_i(s_cfg_avs),
+
         .cfg_cpol_i(s_cfg_cpol),
         .cfg_cpha_i(s_cfg_cpha),
 
@@ -435,6 +442,7 @@ module udma_spim_top
         .rx_data_valid_o(s_rx_data_valid),
         .rx_data_ready_i(s_rx_data_ready),
 
+        .slv_req_o(s_slv_req),
         .spi_clk_o(spi_clk_o),
         .spi_oen0_o(spi_oen0_o),
         .spi_oen1_o(spi_oen1_o),
@@ -458,6 +466,16 @@ module udma_spim_top
         .clk_rx_i ( sys_clk_i ),
         .rstn_rx_i( rstn_i    ),
         .edge_o   ( spi_eot_o )
+    );
+
+    edge_propagator u_req_ep
+    (
+        .clk_tx_i ( s_clk_spi ),
+        .rstn_tx_i( rstn_i    ),
+        .edge_i   ( s_slv_req ),
+        .clk_rx_i ( sys_clk_i ),
+        .rstn_rx_i( rstn_i    ),
+        .edge_o   ( spi_req_o )
     );
 
 endmodule

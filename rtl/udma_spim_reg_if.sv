@@ -71,6 +71,7 @@ module udma_spim_reg_if #(
     input  logic [L2_AWIDTH_NOAL-1:0] cfg_tx_curr_addr_i,
     input  logic     [TRANS_SIZE-1:0] cfg_tx_bytes_left_i,
 
+    output logic                      cfg_avs_o,
     input  logic                [1:0] status_i,
 
     input  logic               [31:0] udma_cmd_i,
@@ -98,6 +99,8 @@ module udma_spim_reg_if #(
     logic              [1 : 0] r_tx_datasize;
     logic                      r_tx_en;
     logic                      r_tx_clr;
+
+    logic                      r_avs;
 
     logic                [4:0] s_wr_addr;
     logic                [4:0] s_rd_addr;
@@ -155,6 +158,7 @@ module udma_spim_reg_if #(
     assign cfg_tx_en_o         = r_tx_en;
     assign cfg_tx_clr_o        = r_tx_clr;
 
+    assign cfg_avs_o           = r_avs;
 
     always_ff @(posedge clk_i, negedge rstn_i) 
     begin
@@ -178,6 +182,7 @@ module udma_spim_reg_if #(
             r_tx_continuous <=  'h0;
             r_tx_en          =  'h0;
             r_tx_clr         =  'h0;
+            r_avs           <= 1'b0;
         end
         else
         begin
@@ -248,6 +253,8 @@ module udma_spim_reg_if #(
                     r_tx_datasize    <= cfg_data_i[2:1];
                     r_tx_continuous  <= cfg_data_i[0];
                 end
+                `REG_AVS:
+                    r_avs            <= cfg_data_i[0];
 
                 endcase
             end
@@ -278,6 +285,8 @@ module udma_spim_reg_if #(
             cfg_data_o = {26'h0,cfg_tx_pending_i,cfg_tx_en_i,1'b0,2'b00,r_tx_continuous};
         `REG_STATUS:
             cfg_data_o = {30'h0,status_i};
+        `REG_AVS:
+            cfg_data_o = {31'h0,r_avs};
         default:
             cfg_data_o = 'h0;
         endcase
