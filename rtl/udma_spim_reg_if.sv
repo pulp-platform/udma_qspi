@@ -168,30 +168,30 @@ module udma_spim_reg_if #(
             r_cmd_startaddr  <=  'h0;
             r_cmd_size       <=  'h0;
             r_cmd_continuous <=  'h0;
-            r_cmd_en          =  'h0;
-            r_cmd_clr         =  'h0;
+            r_cmd_en         <=  'h0;
+            r_cmd_clr        <=  'h0;
             r_rx_startaddr  <=  'h0;
             r_rx_size       <=  'h0;
             r_rx_continuous <=  'h0;
-            r_rx_en          =  'h0;
-            r_rx_clr         =  'h0;
+            r_rx_en         <=  'h0;
+            r_rx_clr        <=  'h0;
             r_rx_datasize   <= 2'b10;
             r_tx_datasize   <= 2'b10;
             r_tx_startaddr  <=  'h0;
             r_tx_size       <=  'h0;
             r_tx_continuous <=  'h0;
-            r_tx_en          =  'h0;
-            r_tx_clr         =  'h0;
+            r_tx_en         <=  'h0;
+            r_tx_clr        <=  'h0;
             r_avs           <= 1'b0;
         end
         else
         begin
-            r_cmd_en         =  'h0;
-            r_cmd_clr        =  'h0;
-            r_rx_en          =  'h0;
-            r_rx_clr         =  'h0;
-            r_tx_en          =  'h0;
-            r_tx_clr         =  'h0;
+            r_cmd_en        <=  'h0;
+            r_cmd_clr       <=  'h0;
+            r_rx_en         <=  'h0;
+            r_rx_clr        <=  'h0;
+            r_tx_en         <=  'h0;
+            r_tx_clr        <=  'h0;
 
             if (udma_cmd_valid_i && udma_cmd_ready_i && (s_is_cmd_ucs || s_is_cmd_uca))
             begin
@@ -208,12 +208,12 @@ module udma_spim_reg_if #(
                     begin
                         r_tx_size <= s_cmd_decode_size;
                         r_tx_datasize <= s_cmd_decode_ds;
-                        r_tx_en    = 1'b1;
+                        r_tx_en   <= 1'b1;
                     end
                     else
                     begin
                         r_rx_size <= s_cmd_decode_size;
-                        r_rx_en    = 1'b1;
+                        r_rx_en   <= 1'b1;
                         r_rx_datasize <= s_cmd_decode_ds;
                     end
                 end
@@ -227,8 +227,8 @@ module udma_spim_reg_if #(
                     r_cmd_size        <= cfg_data_i[TRANS_SIZE-1:0];
                 `REG_CMD_CFG:
                 begin
-                    r_cmd_clr          = cfg_data_i[6];
-                    r_cmd_en           = cfg_data_i[4];
+                    r_cmd_clr         <= cfg_data_i[6];
+                    r_cmd_en          <= cfg_data_i[4];
                     r_cmd_continuous  <= cfg_data_i[0];
                 end
                 `REG_RX_SADDR:
@@ -237,8 +237,8 @@ module udma_spim_reg_if #(
                     r_rx_size        <= cfg_data_i[TRANS_SIZE-1:0];
                 `REG_RX_CFG:
                 begin
-                    r_rx_clr          = cfg_data_i[6];
-                    r_rx_en           = cfg_data_i[4];
+                    r_rx_clr         <= cfg_data_i[6];
+                    r_rx_en          <= cfg_data_i[4];
                     r_rx_datasize    <= cfg_data_i[2:1];
                     r_rx_continuous  <= cfg_data_i[0];
                 end
@@ -248,8 +248,8 @@ module udma_spim_reg_if #(
                     r_tx_size        <= cfg_data_i[TRANS_SIZE-1:0];
                 `REG_TX_CFG:
                 begin
-                    r_tx_clr          = cfg_data_i[6];
-                    r_tx_en           = cfg_data_i[4];
+                    r_tx_clr         <= cfg_data_i[6];
+                    r_tx_en          <= cfg_data_i[4];
                     r_tx_datasize    <= cfg_data_i[2:1];
                     r_tx_continuous  <= cfg_data_i[0];
                 end
