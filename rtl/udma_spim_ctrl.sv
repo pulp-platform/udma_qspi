@@ -758,10 +758,12 @@ module udma_spim_ctrl
             r_rx_done <= rx_done_i;
             r_is_replay <= s_is_replay;
 
-            if(s_set_first_reply)
+            if(s_set_first_reply) begin
                 r_first_replay <= 1'b1;
-            if(s_clr_first_reply)
+            end else if(s_clr_first_reply) begin
                 r_first_replay <= 1'b0;
+            end
+            
             if(s_update_status)
                 r_status <= s_status;
 
