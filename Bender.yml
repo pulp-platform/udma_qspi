@@ -1,0 +1,28 @@
+package:
+  name: udma_qspi
+  authors: 
+    - "Antonio Pullini <pullinia@iis.ee.ethz.ch>"
+    - "Jie Chen <jie.chen@greenwaves-technologies.com>"
+    - "Florent Rotenberg <florent.rotenberg@greenwaves-technologies.com>"
+    - "Pasquale Davide Schiavone <pschiavo@iis.ee.ethz.ch>"
+    - "Antoine Faravelon <antoine.faravelon@greenwaves-technologies.com>"
+    - "Igor Loi <igor.loi@unibo.it>"
+
+dependencies:
+  udma_core: { git: "https://github.com/pulp-platform/udma_core.git", rev: "control-pulp" }
+  common_cells: { git: "https://github.com/pulp-platform/common_cells.git", version: 1.29.0 }
+  tech_cells_generic: { git: "https://github.com/pulp-platform/tech_cells_generic.git", version: 0.2.11 }
+
+sources:
+  include_dirs:
+    - rtl
+  files:
+      # Source files grouped in levels. Files in level 0 have no dependencies on files in this
+      # package. Files in level 1 only depend on files in level 0, files in level 2 on files in
+      # levels 1 and 0, etc. Files within a level are ordered alphabetically.
+      # Level 0
+    - rtl/udma_spim_ctrl.sv
+    - rtl/udma_spim_reg_if.sv
+    - rtl/udma_spim_txrx.sv
+      # Level 1
+    - rtl/udma_spim_top.sv
