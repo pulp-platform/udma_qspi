@@ -19,6 +19,48 @@
 `define SPI_CMD_SETUP_UCS 4'b1110
 
 // SPI Master Registers
+`ifdef REG_RX_SADDR
+`undef REG_RX_SADDR
+`endif
+`ifdef REG_RX_SIZE
+`undef REG_RX_SIZE
+`endif
+`ifdef REG_RX_CFG
+`undef REG_RX_CFG
+`endif
+`ifdef REG_RX_INTCFG
+`undef REG_RX_INTCFG
+`endif
+`ifdef REG_TX_SADDR
+`undef REG_TX_SADDR
+`endif
+`ifdef REG_TX_SIZE
+`undef REG_TX_SIZE
+`endif
+`ifdef REG_TX_CFG
+`undef REG_TX_CFG
+`endif
+`ifdef REG_TX_INTCFG
+`undef REG_TX_INTCFG
+`endif
+`ifdef REG_CMD_SADDR
+`undef REG_CMD_SADDR
+`endif
+`ifdef REG_CMD_SIZE
+`undef REG_CMD_SIZE
+`endif
+`ifdef REG_CMD_CFG
+`undef REG_CMD_CFG
+`endif
+`ifdef REG_CMD_INTCFG
+`undef REG_CMD_INTCFG
+`endif
+`ifdef REG_STATUS
+`undef REG_STATUS
+`endif
+`ifdef REG_AVS
+`undef REG_AVS
+`endif
 `define REG_RX_SADDR     5'b00000 //BASEADDR+0x00 
 `define REG_RX_SIZE      5'b00001 //BASEADDR+0x04
 `define REG_RX_CFG       5'b00010 //BASEADDR+0x08  
