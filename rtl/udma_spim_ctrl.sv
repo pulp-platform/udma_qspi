@@ -611,7 +611,7 @@ module udma_spim_ctrl
 
                 udma_rx_data_o       = rx_data_i;
                 udma_rx_data_valid_o = r_is_dummy ? 1'b0 : rx_data_valid_i;
-                rx_data_ready_o      = udma_rx_data_ready_i;
+                rx_data_ready_o      = r_is_dummy | udma_rx_data_ready_i;
             end
             /*
 	    WAIT_ADDR:
@@ -754,8 +754,15 @@ module udma_spim_ctrl
         begin
 
             r_is_ful  <= s_is_ful;
-            r_tx_done <= tx_done_i;
-            r_rx_done <= rx_done_i;
+            // Keep each completion until both halves of a full-duplex command finish.
+            // Clear between commands so an earlier transfer cannot complete a new one.
+            if (state == WAIT_DONE) begin
+                r_tx_done <= r_tx_done | tx_done_i;
+                r_rx_done <= r_rx_done | rx_done_i;
+            end else begin
+                r_tx_done <= 1'b0;
+                r_rx_done <= 1'b0;
+            end
             r_is_replay <= s_is_replay;
 
             if(s_set_first_reply) begin

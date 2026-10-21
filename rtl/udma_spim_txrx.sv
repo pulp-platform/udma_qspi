@@ -71,7 +71,7 @@ module udma_spim_txrx
 );
 
     enum logic [3:0] {TX_IDLE,TX_SEND,TX_WAIT_DATA} tx_state,tx_state_next;
-    enum logic [3:0] {RX_IDLE,RX_RECEIVE} rx_state,rx_state_next;
+    enum logic [3:0] {RX_IDLE,RX_RECEIVE,RX_WAIT_DATA} rx_state,rx_state_next;
 
     logic [15:0] s_tx_counter_hi;
     logic [15:0] s_rx_counter_hi;
@@ -92,6 +92,8 @@ module udma_spim_txrx
     logic        r_rx_is_last;
     logic        s_tx_is_last;
     logic        s_rx_is_last;
+    logic        r_rx_wait_done;
+    logic        s_rx_wait_done;
 
 	logic        s_tx_sample_in;
 	logic        s_sample_rx_in;
@@ -383,6 +385,13 @@ module udma_spim_txrx
                     s_tx_idle      = 1'b1;
     		end
     		TX_SEND:
+            if (s_is_ful && (rx_state == RX_WAIT_DATA))
+            begin
+                // Hold TX and the shared counters while RX has a pending word.
+                s_tx_driving = 1'b1;
+                s_tx_mode = tx_qpi_i ? `SPI_QUAD_TX : `SPI_STD;
+            end
+            else
     		begin
 		    	s_tx_driving = 1'b1;
     			s_tx_clken   = 1'b1;
@@ -497,6 +506,7 @@ module udma_spim_txrx
         s_rx_shift_reg      = r_rx_shift_reg;
         s_rx_idle           = 1'b0;
         s_rx_is_last        = r_rx_is_last;
+        s_rx_wait_done      = r_rx_wait_done;
         s_rx_sample_hi      = 1'b0;
         s_rx_sample_bits    = 1'b0;
         s_rx_sample_transf  = 1'b0;
@@ -505,6 +515,7 @@ module udma_spim_txrx
     		begin
     			if(rx_start_i)
     			begin
+                    s_rx_wait_done = 1'b0;
                     s_rx_mode      = rx_qpi_i ? `SPI_QUAD_RX : `SPI_STD;
     				s_sample_rx_in = 1'b1;
    					rx_state_next  = RX_RECEIVE;
@@ -562,29 +573,62 @@ module udma_spim_txrx
                             if (r_rx_is_last)
                             begin
                                 s_rx_is_last = 1'b0;
-    			    	        rx_done_o = 1'b1;
-	    		    	        if(rx_start_i)
-    			    	        begin
-    			    	            s_sample_rx_in = 1'b1;
-                                    rx_state_next  = RX_RECEIVE; 
+                                if (rx_data_valid_o && !rx_data_ready_i)
+                                begin
+                                    s_rx_wait_done = 1'b1;
+                                    rx_state_next = RX_WAIT_DATA;
                                 end
                                 else
-                                    rx_state_next = RX_IDLE;
+                                begin
+                                    rx_done_o = 1'b1;
+                                    if(rx_start_i)
+                                    begin
+                                        s_sample_rx_in = 1'b1;
+                                        rx_state_next = RX_RECEIVE;
+                                    end
+                                    else
+                                        rx_state_next = RX_IDLE;
+                                end
                             end
                             else
                             begin
-                                s_rx_is_last       = 1'b1; 
+                                s_rx_is_last = 1'b1;
                             end
-    			    	end
-	    		    	else if (s_bits_done)
-    			    	begin
-                            s_rx_sample_hi  = 1'b1;
-    			    		s_rx_counter_hi = r_counter_hi -1;
-    			    	end
-    			    end
+                        end
+                        else if (s_bits_done)
+                        begin
+                            s_rx_sample_hi = 1'b1;
+                            s_rx_counter_hi = r_counter_hi -1;
+                        end
+
+                        if (rx_data_valid_o && !rx_data_ready_i)
+                        begin
+                            // Complete this word's last SPI clock before pausing.
+                            rx_state_next = RX_WAIT_DATA;
+                        end
+                    end
                 end
-    		end
-    	endcase // rx_state
+            end
+            RX_WAIT_DATA:
+            begin
+                s_rx_mode = rx_qpi_i ? `SPI_QUAD_RX : `SPI_STD;
+                rx_data_o = r_rx_shift_reg;
+                rx_data_valid_o = 1'b1;
+                if (rx_data_ready_i)
+                begin
+                    s_rx_wait_done = 1'b0;
+                    if (r_rx_wait_done)
+                    begin
+                        rx_done_o = 1'b1;
+                        rx_state_next = RX_IDLE;
+                    end
+                    else
+                    begin
+                        rx_state_next = RX_RECEIVE;
+                    end
+                end
+            end
+        endcase // rx_state
     
     end
 
@@ -609,11 +653,13 @@ module udma_spim_txrx
         begin
             r_rx_is_last <= 1'b0;
             r_tx_is_last <= 1'b0;
+            r_rx_wait_done <= 1'b0;
         end
         else
         begin
             r_rx_is_last <= s_rx_is_last;
             r_tx_is_last <= s_tx_is_last;
+            r_rx_wait_done <= s_rx_wait_done;
         end
 
     end
@@ -719,5 +765,16 @@ module udma_spim_txrx
         	r_spi_mode <= s_spi_mode;
         end
     end
+
+    a_rx_data_held_while_stalled: assert property (
+        @(posedge clk_i) disable iff (!rstn_i)
+        rx_data_valid_o && !rx_data_ready_i
+        |=> rx_data_valid_o && $stable(rx_data_o))
+      else $error("udma_spim_txrx changed RX data while stalled");
+
+    a_rx_done_after_final_data_accept: assert property (
+        @(posedge clk_i) disable iff (!rstn_i)
+        rx_done_o |-> !(rx_data_valid_o && !rx_data_ready_i))
+      else $error("udma_spim_txrx completed with unaccepted RX data");
 
 endmodule // udma_spim_txrx
